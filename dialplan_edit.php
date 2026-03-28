@@ -232,7 +232,7 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 	// delete existing dialplan_details records when updating (legacy data from old editor)
 	if ($action === 'update' && !empty($dialplan_uuid)) {
 		if (!function_exists('dispatch')) {
-			function dispatch($event_name, $data) {
+			function dispatch($event_name_or_object, $data = null) {
 				// no-op
 			}
 		}
@@ -246,10 +246,13 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 			, 'sql' => $sql
 			, 'parameters' => $parameters
 		]);
-		$database->execute($sql, $parameters);
+		$result = $database->execute($sql, $parameters);
 
 		// invoke post-delete hook
-		dispatch('post_dialplan_delete_details', ['dialplan_uuid' => $dialplan_uuid]);
+		dispatch('post_dialplan_delete_details', [
+			'dialplan_uuid' => $dialplan_uuid
+			, 'result' => $result
+		]);
 	}
 
 	// clear the cache
