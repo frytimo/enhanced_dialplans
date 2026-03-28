@@ -217,7 +217,7 @@ $themes = [
 
 		editor.on('change', function() {
 			if (skipChange) return;
-			setSyncBadge('editing', 'Editing…');
+			setSyncBadge('editing', 'Editing (syncing...)');
 			channel.postMessage({ type: 'xml-update', xml: editor.getValue() });
 		});
 	}
@@ -282,6 +282,14 @@ $themes = [
 				editor.setValue(d.xml || '', -1);
 				skipChange = false;
 				setSyncBadge('synced', 'Synced');
+			} else if (d.type === 'sync-state') {
+				if (d.state === 'synced') {
+					setSyncBadge('synced', 'Synced');
+				} else if (d.state === 'error') {
+					setSyncBadge('editing', 'Out of sync (parse error)');
+				} else if (d.state === 'stale') {
+					setSyncBadge('editing', 'Out of sync');
+				}
 			} else if (d.type === 'settings-update') {
 				applySettings(d.settings);
 			}

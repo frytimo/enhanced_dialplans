@@ -220,13 +220,16 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 	$array['dialplans'][0]['dialplan_xml'] = $dialplan_xml;
 	$array['dialplans'][0]['dialplan_editor_version'] = 'unified';
 
+	// preserve UUID before unsetting payload
+	$saved_dialplan_uuid = $array['dialplans'][0]['dialplan_uuid'];
+
 	// save to database
 	$database->save($array);
 	unset($array);
 
 	// update the dialplan_uuid for new records
 	if ($action === 'add') {
-		$dialplan_uuid = $array['dialplans'][0]['dialplan_uuid'];
+		$dialplan_uuid = $saved_dialplan_uuid;
 	}
 
 	// delete existing dialplan_details records when updating (legacy data from old editor)
@@ -1254,6 +1257,24 @@ require_once "resources/header.php";
 	pointer-events: none;
 }
 
+.mobile-panel-tabs .xml-tab-popout-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	margin-left: 4px;
+	border-radius: 3px;
+	font-size: 11px;
+	color: #17a2b8;
+	transition: background 0.15s, color 0.15s;
+}
+
+.mobile-panel-tabs .xml-tab-popout-icon:hover {
+	background: rgba(23, 162, 184, 0.12);
+	color: #138496;
+}
+
 /* Migration warning */
 .migration-warning {
 	background: #fcf8e3;
@@ -1465,7 +1486,7 @@ require_once "resources/header.php";
 </div>
 <?php endif; ?>
 
-<?php echo $text['description-dialplan-edit-unified'] ?? 'Edit the dialplan using the visual editor. Changes to the visual editor update the XML immediately. To apply XML changes to the visual editor, click Visualize.'; ?>
+	<?php echo $text['description-dialplan-edit-unified'] ?? 'Edit the dialplan using the visual editor. Changes to the visual editor update the XML immediately. XML edits also synchronize the visual editor automatically when parsable.'; ?>
 
 <!-- Basic Properties Card (Collapsible) -->
 <div class="properties-card">
@@ -1588,6 +1609,13 @@ require_once "resources/header.php";
 	</button>
 	<button type="button" id="tab-xml" onclick="switchPanel('xml');">
 		<i class="fas fa-code"></i> <?php echo $text['label-xml'] ?? 'XML'; ?>
+		<span
+			class="xml-tab-popout-icon"
+			onclick="event.stopPropagation(); popoutXmlPanel();"
+			title="<?php echo $text['label-popout_xml'] ?? 'Pop out XML editor into a separate window'; ?>"
+		>
+			<i class="fas fa-external-link-alt"></i>
+		</span>
 	</button>
 	<span class="tab-spacer"></span>
 	<button type="button" id="tab-popout" class="tab-popout-btn" style="display:none;" onclick="popoutXmlPanel();" title="<?php echo $text['label-popout_xml'] ?? 'Pop out XML editor into a separate window'; ?>">
@@ -1883,16 +1911,15 @@ $dialplan_lint_rules_version = md5_file(__DIR__ . '/resources/javascript/dialpla
 			skipAceChange = false;
 		}
 
-		// Listen for changes
-		const debouncedLintFromXml = debounce(function() {
-			lintFromXml();
-		}, 600);
+		// Live XML->visual sync while editing (debounced to keep typing responsive)
+		const debouncedSyncFromXml = debounce(function() {
+			syncTreeFromEditorXml();
+		}, 350);
 
 		editor.on('change', function() {
 			if (skipAceChange) return;
 			isDirty = true;
-			setSyncState('stale');
-			debouncedLintFromXml();
+			debouncedSyncFromXml();
 		});
 
 		// Remove certain keyboard shortcuts
@@ -1934,7 +1961,7 @@ $dialplan_lint_rules_version = md5_file(__DIR__ . '/resources/javascript/dialpla
 				statusEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <span id="sync-status-text"><?php echo $text['label-ui_outdated'] ?? 'UI outdated'; ?></span>';
 				overlay.classList.remove('hidden', 'error');
 				overlay.classList.add('stale');
-				overlayMessage.textContent = '<?php echo $text['message-xml_modified'] ?? 'XML modified — click Visualize to update editor'; ?>';
+				overlayMessage.textContent = '<?php echo $text['message-xml_modified'] ?? 'XML modified — visual editor is out of sync'; ?>';
 				overlay.querySelector('.overlay-icon').innerHTML = '<i class="fas fa-sync-alt"></i>';
 				break;
 			case 'error':
@@ -1944,6 +1971,39 @@ $dialplan_lint_rules_version = md5_file(__DIR__ . '/resources/javascript/dialpla
 				overlayMessage.textContent = errorMessage || '<?php echo $text['message-parse_error'] ?? 'Unable to visualize — XML has errors'; ?>';
 				overlay.querySelector('.overlay-icon').innerHTML = '<i class="fas fa-exclamation-circle"></i>';
 				break;
+		}
+
+		if (xmlChannel && xmlPopoutWindow && !xmlPopoutWindow.closed) {
+			xmlChannel.postMessage({
+				type: 'sync-state',
+				state: state,
+				error: errorMessage || ''
+			});
+		}
+	}
+
+	// Parse XML from ACE and keep the visual tree in sync while typing.
+	// Parse failures are expected during edits and surface as sync error state.
+	function syncTreeFromEditorXml() {
+		const xml = editor.getValue();
+		if (!xml.trim()) {
+			tree = {
+				type: 'extension',
+				attributes: { name: document.getElementById('dialplan_name').value || '', continue: 'false', uuid: '' },
+				children: []
+			};
+			renderTree();
+			setSyncState('synced');
+			return;
+		}
+
+		const result = DialplanParser.parseXmlToTree(xml);
+		if (result.success) {
+			tree = result.tree;
+			renderTree();
+			setSyncState('synced');
+		} else {
+			setSyncState('error', result.error);
 		}
 	}
 
@@ -3368,14 +3428,15 @@ $dialplan_lint_rules_version = md5_file(__DIR__ . '/resources/javascript/dialpla
 			if (e.data.type === 'ready') {
 				// Popup is ready — send current XML
 				xmlChannel.postMessage({ type: 'xml-init', xml: editor.getValue() });
+				xmlChannel.postMessage({ type: 'sync-state', state: syncState });
 			} else if (e.data.type === 'xml-update') {
 				// Popup edited XML — update main editor
 				xmlPopoutWasEditing = true;
 				skipAceChange = true;
 				editor.setValue(e.data.xml, -1);
 				skipAceChange = false;
-				setSyncState('stale');
 				isDirty = true;
+				syncTreeFromEditorXml();
 			} else if (e.data.type === 'close') {
 				handlePopupClosed();
 			}
@@ -3404,10 +3465,10 @@ $dialplan_lint_rules_version = md5_file(__DIR__ . '/resources/javascript/dialpla
 		// Pop-out button stays hidden — we land on Visual tab after popup closes
 		// (it will appear again when user manually clicks the XML tab)
 
-		// Auto-visualize if popup made edits, so tree is in sync
+		// Ensure tree reflects the final XML from popup edits.
 		if (xmlPopoutWasEditing) {
 			xmlPopoutWasEditing = false;
-			visualizeXml();
+			syncTreeFromEditorXml();
 		}
 	}
 
