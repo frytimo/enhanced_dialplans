@@ -66,3 +66,66 @@ php core/upgrade/upgrade.php --permissions
 php core/upgrade/upgrade.php --menu
 ```
 Logout and back in again
+
+## Developers
+
+### Visual Dialplan Custom Lint Rules
+
+The Visual Dialplan editor can load lint rules from any app automatically.
+
+Rule file location per app:
+
+- `app/<your_app>/resources/javascript/dialplan_lint_rules.js`
+
+How discovery works:
+
+- The loader in `app/visual_dialplans/dialplan_lint_rules_loader.php` scans all app folders for `resources/javascript/dialplan_lint_rules.js`.
+- Each file is loaded in isolation and merged into the global `DialplanLintRules` array.
+- If one custom rule file has an error, it is ignored so the editor continues working.
+
+Rule format:
+
+```javascript
+var DialplanLintRules = [
+	{
+		id: 'action-missing-data',
+		severity: 'warning', // 'error' | 'warning' | 'info'
+		description: 'Action or anti-action has an application but no data',
+		check: function (tree) {
+			var findings = [];
+
+			function walk(nodes) {
+				if (!nodes) return;
+				for (var i = 0; i < nodes.length; i++) {
+					var node = nodes[i];
+
+					if ((node.type === 'action' || node.type === 'anti-action') &&
+						node.enabled !== false &&
+						node.attributes &&
+						node.attributes.application &&
+						!node.attributes.data) {
+						findings.push({
+							node: node,
+							message: 'Application is set but data is empty'
+						});
+					}
+
+					if (node.type === 'condition' && node.children) {
+						walk(node.children);
+					}
+				}
+			}
+
+			walk(tree.children || []);
+
+			return findings;
+		}
+	}
+];
+```
+
+Notes:
+
+- `check(tree)` must return an array of objects with `{ node, message }`.
+- `node` should be a reference to a node from the parsed dialplan tree.
+- Keep rule files self-contained and avoid dependencies on app page globals.

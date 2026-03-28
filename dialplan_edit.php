@@ -1742,13 +1742,18 @@ require_once "resources/header.php";
 <?php
 $dialplan_parser_version = md5_file(__DIR__ . '/resources/javascript/dialplan_parser.js');
 $dialplan_linter_version = md5_file(__DIR__ . '/resources/javascript/dialplan_linter.js');
-$dialplan_lint_rules_version = md5_file(__DIR__ . '/resources/javascript/dialplan_lint_rules.js');
+$dialplan_lint_rules_files = glob(dirname(__DIR__) . '/*/resources/javascript/dialplan_lint_rules.js') ?: [];
+$dialplan_lint_rules_hash_input = '';
+foreach ($dialplan_lint_rules_files as $dialplan_lint_rules_file) {
+	$dialplan_lint_rules_hash_input .= $dialplan_lint_rules_file . ':' . @filemtime($dialplan_lint_rules_file) . ';';
+}
+$dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 ?>
 
 <script type="text/javascript" src="<?php echo PROJECT_PATH; ?>/resources/ace/ace.js" charset="utf-8"></script>
 <script type="text/javascript" src="resources/javascript/dialplan_parser.js?v=<?php echo $dialplan_parser_version; ?>"></script>
 <script type="text/javascript" src="resources/javascript/dialplan_linter.js?v=<?php echo $dialplan_linter_version; ?>"></script>
-<script type="text/javascript" src="resources/javascript/dialplan_lint_rules.js?v=<?php echo $dialplan_lint_rules_version; ?>"></script>
+<script type="text/javascript" src="dialplan_lint_rules_loader.php?v=<?php echo $dialplan_lint_rules_version; ?>"></script>
 
 <script type="text/javascript">
 (function() {
