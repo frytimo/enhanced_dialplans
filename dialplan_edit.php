@@ -1924,6 +1924,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		editor.on('change', function() {
 			if (skipAceChange) return;
 			isDirty = true;
+			notifyPopupDirtyState();
 			debouncedSyncFromXml();
 		});
 
@@ -1978,7 +1979,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				break;
 		}
 
-		if (xmlChannel && xmlPopoutWindow && !xmlPopoutWindow.closed) {
+		if (xmlChannel) {
 			xmlChannel.postMessage({
 				type: 'sync-state',
 				state: state,
@@ -2220,7 +2221,48 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	let xmlPopoutWindow = null;
 	let xmlChannel = null;
 	let xmlPopoutWasEditing = false;
+	let keepPopoutOpenOnUnload = false;
 	const xmlChannelId = 'fpbx-dialplan-<?php echo preg_replace('/[^a-f0-9\-]/', '', $_SESSION['user_uuid'] ?? 'shared'); ?>';
+
+	function initXmlChannel() {
+		if (xmlChannel) return;
+		xmlChannel = new BroadcastChannel(xmlChannelId);
+		xmlChannel.addEventListener('message', function(e) {
+			if (!e || !e.data) return;
+			if (e.data.type === 'ready') {
+				// Popup is ready — send current XML and status from this page instance
+				xmlChannel.postMessage({ type: 'xml-init', xml: editor.getValue() });
+				xmlChannel.postMessage({ type: 'sync-state', state: syncState });
+				notifyPopupDirtyState();
+			} else if (e.data.type === 'xml-update') {
+				// Popup edited XML — update main editor
+				xmlPopoutWasEditing = true;
+				skipAceChange = true;
+				editor.setValue(e.data.xml, -1);
+				skipAceChange = false;
+				isDirty = true;
+				syncTreeFromEditorXml();
+			} else if (e.data.type === 'save-request') {
+				// Save requested from popup using the same validation/modals as main Save button.
+				document.getElementById('dialplan_xml_hidden').value = editor.getValue();
+				document.getElementById('btn_save').click();
+			} else if (e.data.type === 'close') {
+				handlePopupClosed();
+			}
+		});
+	}
+
+	function announceMainReady() {
+		if (!xmlChannel) return;
+		let tries = 0;
+		const ping = function() {
+			if (!xmlChannel || tries >= 6) return;
+			xmlChannel.postMessage({ type: 'main-ready' });
+			tries++;
+			setTimeout(ping, 350);
+		};
+		ping();
+	}
 
 	// Create DOM element for a node
 	function createNodeElement(node, index, parentArray, parentNode) {
@@ -3193,6 +3235,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	function updateXmlFromTree() {
 		if (!tree) return;
 		isDirty = true;
+		notifyPopupDirtyState();
 
 		// Update extension attributes from form
 		tree.attributes.name = document.getElementById('dialplan_name').value || '';
@@ -3212,7 +3255,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		runLinter();
 
 		// Broadcast updated XML to popup if open
-		if (xmlChannel && xmlPopoutWindow && !xmlPopoutWindow.closed) {
+		if (xmlChannel) {
 			xmlChannel.postMessage({ type: 'xml-init', xml: xml });
 		}
 	}
@@ -3425,27 +3468,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (tabXml) tabXml.classList.add('tab-disabled');
 		if (tabPopout) tabPopout.style.display = 'none';
 
-		// Open BroadcastChannel before opening window to avoid race
-		if (xmlChannel) { xmlChannel.close(); xmlChannel = null; }
+		// Ensure BroadcastChannel exists before opening window to avoid race
+		initXmlChannel();
 		xmlPopoutWasEditing = false;
-		xmlChannel = new BroadcastChannel(xmlChannelId);
-		xmlChannel.addEventListener('message', function(e) {
-			if (e.data.type === 'ready') {
-				// Popup is ready — send current XML
-				xmlChannel.postMessage({ type: 'xml-init', xml: editor.getValue() });
-				xmlChannel.postMessage({ type: 'sync-state', state: syncState });
-			} else if (e.data.type === 'xml-update') {
-				// Popup edited XML — update main editor
-				xmlPopoutWasEditing = true;
-				skipAceChange = true;
-				editor.setValue(e.data.xml, -1);
-				skipAceChange = false;
-				isDirty = true;
-				syncTreeFromEditorXml();
-			} else if (e.data.type === 'close') {
-				handlePopupClosed();
-			}
-		});
 
 		const url = '<?php echo PROJECT_PATH; ?>/app/visual_dialplans/dialplan_xml_popout.php?channel=' + encodeURIComponent(xmlChannelId);
 		xmlPopoutWindow = window.open(url, 'dialplan-xml-popout', 'width=950,height=750,resizable=yes,scrollbars=yes');
@@ -3507,7 +3532,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	};
 
 	function broadcastEditorSettings() {
-		if (xmlChannel && xmlPopoutWindow && !xmlPopoutWindow.closed) {
+		if (xmlChannel) {
 			xmlChannel.postMessage({
 				type: 'settings-update',
 				settings: getEditorSettings()
@@ -3523,6 +3548,25 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			invisibles:   editor.getOption('showInvisibles'),
 			indent_guides: editor.getOption('displayIndentGuides')
 		};
+	}
+
+	function notifyPopupSaveState(status, reason) {
+		if (xmlChannel) {
+			xmlChannel.postMessage({
+				type: 'save-state',
+				status: status,
+				reason: reason || ''
+			});
+		}
+	}
+
+	function notifyPopupDirtyState() {
+		if (xmlChannel) {
+			xmlChannel.postMessage({
+				type: 'dirty-state',
+				dirty: !!isDirty
+			});
+		}
 	}
 
 	// Validate regex conditions have at least one regex child
@@ -3552,6 +3596,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 	// Form submission handling
 	document.getElementById('frm').addEventListener('submit', function(e) {
+		keepPopoutOpenOnUnload = true;
+
 		// Always use XML from ACE editor
 		document.getElementById('dialplan_xml_hidden').value = editor.getValue();
 
@@ -3560,6 +3606,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			const validation = validateRegexConditions(tree.children);
 			if (!validation.valid) {
 				e.preventDefault();
+				notifyPopupSaveState('cancelled', 'validation');
 				alert(validation.message);
 				return false;
 			}
@@ -3568,25 +3615,32 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Check if confirmation needed
 		if (syncState === 'stale') {
 			e.preventDefault();
+			notifyPopupSaveState('cancelled', 'stale');
 			modal_open('modal-save-stale', 'btn_save');
 			return false;
 		}
 
 		if (syncState === 'error') {
 			e.preventDefault();
+			notifyPopupSaveState('cancelled', 'error');
 			modal_open('modal-save-error', 'btn_save');
 			return false;
 		}
 
+		notifyPopupSaveState('start');
+
 		isDirty = false;
+		notifyPopupDirtyState();
 		return true;
 	});
 
 	// Confirm save after modal
 	window.confirmSave = function() {
 		modal_close();
+		keepPopoutOpenOnUnload = true;
 		document.getElementById('dialplan_xml_hidden').value = editor.getValue();
 		isDirty = false;
+		notifyPopupDirtyState();
 		document.getElementById('frm').submit();
 	};
 
@@ -3594,6 +3648,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	// Migration confirmation
 	window.confirmMigration = function() {
 		modal_close();
+		keepPopoutOpenOnUnload = true;
 		document.getElementById('frm').submit();
 	};
 	<?php endif; ?>
@@ -3606,9 +3661,10 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 	});
 
-	// Unsaved changes warning — also close popup so it doesn't linger orphaned
+	// Unsaved changes warning.
+	// Keep popup open when this page unloads due to save/submit, otherwise close it.
 	window.addEventListener('beforeunload', function(e) {
-		if (xmlPopoutWindow && !xmlPopoutWindow.closed) {
+		if (!keepPopoutOpenOnUnload && xmlPopoutWindow && !xmlPopoutWindow.closed) {
 			try { xmlPopoutWindow.close(); } catch (_) {}
 			if (xmlChannel) { xmlChannel.close(); xmlChannel = null; }
 			xmlPopoutWindow = null;
@@ -3643,7 +3699,11 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	});
 
 	// Initialize on DOM ready
-	document.addEventListener('DOMContentLoaded', initEditor);
+	document.addEventListener('DOMContentLoaded', function() {
+		initEditor();
+		initXmlChannel();
+		announceMainReady();
+	});
 })();
 </script>
 

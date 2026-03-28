@@ -90,6 +90,26 @@ $themes = [
 			color: #fff;
 		}
 
+		.tool-btn.save-btn {
+			width: auto;
+			padding: 0 10px;
+			gap: 6px;
+			color: #5cb85c;
+			border-color: #5cb85c;
+			display: none;
+		}
+
+		.tool-btn.save-btn:hover {
+			background: rgba(92, 184, 92, 0.14);
+			color: #7ad67a;
+		}
+
+		.tool-btn.save-btn.is-saving {
+			opacity: 0.8;
+			cursor: wait;
+			pointer-events: none;
+		}
+
 		/* Dropdowns */
 		.tool-select {
 			height: 28px;
@@ -163,6 +183,11 @@ $themes = [
 			<?php endforeach; ?>
 		</select>
 
+		<button type="button" class="tool-btn save-btn" id="btn-save-popout" onclick="requestSave();" title="<?php echo $text['button-save'] ?? 'Save'; ?> (Ctrl+S)">
+			<i class="fas fa-save"></i>
+			<span><?php echo $text['button-save'] ?? 'Save'; ?></span>
+		</button>
+
 		<span class="toolbar-spacer"></span>
 		<span id="sync-badge" class="offline"><?php echo $text['label-connecting'] ?? 'Connecting…'; ?></span>
 	</div>
@@ -185,6 +210,9 @@ $themes = [
 	let editor;
 	let channel;
 	let skipChange = false;
+	let hasLocalChanges = false;
+	let hasMainChanges = false;
+	let saveResetTimer = null;
 
 	// Sync badge
 	function setSyncBadge(state, label) {
@@ -192,6 +220,49 @@ $themes = [
 		el.className = '';
 		el.classList.add(state);
 		el.textContent = label;
+	}
+
+	function setSaveButtonState(isSaving) {
+		const btn = document.getElementById('btn-save-popout');
+		if (!btn) return;
+		btn.style.display = (hasLocalChanges || hasMainChanges) ? 'inline-flex' : 'none';
+		btn.classList.toggle('is-saving', !!isSaving);
+		btn.disabled = !!isSaving;
+		const label = btn.querySelector('span');
+		if (label) {
+			label.textContent = isSaving ? 'Saving...' : '<?php echo $text['button-save'] ?? 'Save'; ?>';
+		}
+	}
+
+	function markSavePending() {
+		if (saveResetTimer) {
+			clearTimeout(saveResetTimer);
+			saveResetTimer = null;
+		}
+		setSaveButtonState(true);
+		// Fallback reset in case main page does not submit (validation/modal path).
+		saveResetTimer = setTimeout(function() {
+			setSaveButtonState(false);
+			saveResetTimer = null;
+		}, 2500);
+	}
+
+	function clearSavePending() {
+		if (saveResetTimer) {
+			clearTimeout(saveResetTimer);
+			saveResetTimer = null;
+		}
+		setSaveButtonState(false);
+	}
+
+	function setLocalChanges(isDirty) {
+		hasLocalChanges = !!isDirty;
+		setSaveButtonState(false);
+	}
+
+	function setMainChanges(isDirty) {
+		hasMainChanges = !!isDirty;
+		setSaveButtonState(false);
 	}
 
 	// Editor init
@@ -217,6 +288,7 @@ $themes = [
 
 		editor.on('change', function() {
 			if (skipChange) return;
+			setLocalChanges(true);
 			setSyncBadge('editing', 'Editing (syncing...)');
 			channel.postMessage({ type: 'xml-update', xml: editor.getValue() });
 		});
@@ -246,6 +318,13 @@ $themes = [
 	window.changeTheme = function() {
 		const theme = document.getElementById('theme-select').value;
 		editor.setTheme('ace/theme/' + theme);
+	};
+
+	window.requestSave = function() {
+		if (!channel) return;
+		markSavePending();
+		channel.postMessage({ type: 'xml-update', xml: editor.getValue() });
+		channel.postMessage({ type: 'save-request' });
 	};
 
 	// Apply settings broadcast from main window
@@ -281,7 +360,12 @@ $themes = [
 				editor.setReadOnly(false);
 				editor.setValue(d.xml || '', -1);
 				skipChange = false;
+				setLocalChanges(false);
 				setSyncBadge('synced', 'Synced');
+			} else if (d.type === 'main-ready') {
+				channel.postMessage({ type: 'ready' });
+			} else if (d.type === 'dirty-state') {
+				setMainChanges(!!d.dirty);
 			} else if (d.type === 'sync-state') {
 				if (d.state === 'synced') {
 					setSyncBadge('synced', 'Synced');
@@ -289,6 +373,13 @@ $themes = [
 					setSyncBadge('editing', 'Out of sync (parse error)');
 				} else if (d.state === 'stale') {
 					setSyncBadge('editing', 'Out of sync');
+				}
+			} else if (d.type === 'save-state') {
+				if (d.status === 'start') {
+					markSavePending();
+				} else if (d.status === 'cancelled') {
+					setLocalChanges(true);
+					clearSavePending();
 				}
 			} else if (d.type === 'settings-update') {
 				applySettings(d.settings);
@@ -311,6 +402,14 @@ $themes = [
 		if (channel) {
 			channel.postMessage({ type: 'close' });
 			channel.close();
+		}
+	});
+
+	// Ctrl+S in popup requests save on the main editor page.
+	document.addEventListener('keydown', function(e) {
+		if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+			e.preventDefault();
+			requestSave();
 		}
 	});
 
