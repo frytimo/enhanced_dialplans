@@ -229,6 +229,29 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 		$dialplan_uuid = $array['dialplans'][0]['dialplan_uuid'];
 	}
 
+	// delete existing dialplan_details records when updating (legacy data from old editor)
+	if ($action === 'update' && !empty($dialplan_uuid)) {
+		if (!function_exists('dispatch')) {
+			function dispatch($event_name, $data) {
+				// no-op
+			}
+		}
+
+		$sql = "DELETE FROM v_dialplan_details WHERE dialplan_uuid = :dialplan_uuid";
+		$parameters['dialplan_uuid'] = $dialplan_uuid;
+
+		// invoke pre-delete hook
+		dispatch('pre_dialplan_delete_details', [
+			'dialplan_uuid' => $dialplan_uuid
+			, 'sql' => $sql
+			, 'parameters' => $parameters
+		]);
+		$database->execute($sql, $parameters);
+
+		// invoke post-delete hook
+		dispatch('post_dialplan_delete_details', ['dialplan_uuid' => $dialplan_uuid]);
+	}
+
 	// clear the cache
 	$cache = new cache;
 	if ($dialplan_context == "\${domain_name}" || $dialplan_context == "global") {
