@@ -3297,30 +3297,49 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				(parentNode.isRegexCondition || (parentNode.attributes && parentNode.attributes.regex));
 		}
 
+		function convertRegexNodeForParent(node, newParentNode) {
+			if (!node || node.type !== 'regex' || isRegexContainer(newParentNode)) {
+				return node;
+			}
+
+			node.type = 'condition';
+			node.attributes = {
+				field: (node.attributes && node.attributes.field) || '',
+				expression: (node.attributes && node.attributes.expression) || '',
+				break: ''
+			};
+			node.children = Array.isArray(node.children) ? node.children : [];
+			delete node.isRegexCondition;
+			return node;
+		}
+
 		// Remove from original position
 		const removedNode = draggedParentArray.splice(draggedIndex, 1)[0];
+		const wasRegexNode = removedNode.type === 'regex';
 
 		let placed = false;
 		if (y < height * 0.25) {
-			// Insert above target — parent of target must be a regex condition for regex nodes
-			if (removedNode.type !== 'regex' || isRegexContainer(targetParentNode)) {
-				targetParentArray.splice(targetIndex, 0, removedNode);
-				placed = true;
-			}
+			// Insert above target. Regex rows dropped into non-regex containers become conditions.
+			targetParentArray.splice(targetIndex, 0, convertRegexNodeForParent(removedNode, targetParentNode));
+			placed = true;
 		} else if (y > height * 0.75 || !isDropContainer) {
-			// Insert below target — same parent-container rule for regex nodes
-			if (removedNode.type !== 'regex' || isRegexContainer(targetParentNode)) {
-				const newIndex = targetParentArray === draggedParentArray && draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
-				targetParentArray.splice(newIndex, 0, removedNode);
-				placed = true;
-			}
+			// Insert below target. Regex rows dropped into non-regex containers become conditions.
+			const newIndex = targetParentArray === draggedParentArray && draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+			targetParentArray.splice(newIndex, 0, convertRegexNodeForParent(removedNode, targetParentNode));
+			placed = true;
 		} else {
-			// Insert inside a condition — only allow regex nodes into regex conditions
-			if (removedNode.type !== 'regex' || isRegexContainer(targetNodeData)) {
+			// Insert inside a condition.
+			// Special case: dropping a <regex> field onto a regular (non-regex) condition —
+			// merge the regex's field/expression into the condition rather than nesting it as a child.
+			if (removedNode.type === 'regex' && !isRegexContainer(targetNodeData)) {
+				targetNodeData.attributes.field = (removedNode.attributes && removedNode.attributes.field) || '';
+				targetNodeData.attributes.expression = (removedNode.attributes && removedNode.attributes.expression) || '';
+			} else {
+				// Regular behavior: nest as a child node.
 				if (!targetNodeData.children) targetNodeData.children = [];
-				targetNodeData.children.push(removedNode);
-				placed = true;
+				targetNodeData.children.push(convertRegexNodeForParent(removedNode, targetNodeData));
 			}
+			placed = true;
 		}
 
 		if (!placed) {
@@ -3328,8 +3347,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			draggedParentArray.splice(draggedIndex, 0, removedNode);
 		} else {
 			// If a regex node was moved out of a regex condition and it was the last one,
-			// remove the now-empty regex condition parent from its own parent array.
-			pruneEmptyRegexCondition(removedNode, draggedParentNode);
+			// keep the original regex parent intact by restoring a blank regex child.
+			preserveRegexConditionAfterMove(wasRegexNode, draggedParentNode);
 		}
 
 		updateXmlFromTree();
@@ -3393,22 +3412,17 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			return;
 		}
 
-		// Prevent regex nodes from being dropped into non-regex conditions
-		if (draggedNodeData.type === 'regex' &&
-			!(targetParentNode.isRegexCondition || (targetParentNode.attributes && targetParentNode.attributes.regex))) {
-			handleDragEnd(e);
-			return;
-		}
-
 		// Remove from original position
 		const removedNode = draggedParentArray.splice(draggedIndex, 1)[0];
+		const wasRegexNode = removedNode.type === 'regex';
 
 		// Add to new parent
 		if (!targetParentNode.children) targetParentNode.children = [];
-		targetParentNode.children.push(removedNode);
+		targetParentNode.children.push(convertRegexNodeForParent(removedNode, targetParentNode));
 
-		// If a regex node was the last one in its old regex condition, remove that parent.
-		pruneEmptyRegexCondition(removedNode, draggedParentNode);
+		// If a regex node was the last one in its old regex condition, keep that
+		// parent intact by restoring a blank regex child.
+		preserveRegexConditionAfterMove(wasRegexNode, draggedParentNode);
 
 		updateXmlFromTree();
 		renderTree();
@@ -3416,14 +3430,18 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	}
 
 	// If a regex node was moved out of a regex condition and no regex children remain,
-	// remove that regex condition from its own parent array.
-	function pruneEmptyRegexCondition(movedNode, oldParent) {
-		if (movedNode.type !== 'regex') return;
+	// preserve the parent regex condition by restoring a blank regex child.
+	function preserveRegexConditionAfterMove(wasRegexNode, oldParent) {
+		if (!wasRegexNode) return;
 		if (!oldParent || !(oldParent.isRegexCondition || (oldParent.attributes && oldParent.attributes.regex))) return;
 		const remainingRegex = (oldParent.children || []).filter(function(n) { return n.type === 'regex'; });
 		if (remainingRegex.length > 0) return;
-		// Find and remove oldParent from the tree
-		removeNodeFromTree(tree, oldParent);
+		if (!oldParent.children) oldParent.children = [];
+		oldParent.children.push({
+			type: 'regex',
+			attributes: { field: '', expression: '' },
+			enabled: true
+		});
 	}
 
 	// Recursively remove a specific node object from anywhere in the tree.
