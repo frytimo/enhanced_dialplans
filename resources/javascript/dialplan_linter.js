@@ -8,10 +8,11 @@
  * Usage:
  *   var findings = DialplanLinter.run(tree, DialplanLintRules);
  *
- * Each finding: { node, severity, ruleId, message }
+ * Each finding: { node, severity, ruleId, type, message }
  *   node     — reference to the tree node object
  *   severity — 'error' | 'warning' | 'info'
  *   ruleId   — string identifier of the rule that produced it
+ *   type     — optional finding type such as 'exit'
  *   message  — human-readable description of the problem
  *
  * Rules format (see dialplan_lint_rules.js):
@@ -19,6 +20,7 @@
  *     id:          string
  *     severity:    'error' | 'warning' | 'info'
  *     description: string
+ *     type:        optional string such as 'exit'
  *     check:       function(tree) -> [ { node, message }, ... ]
  *   }
  */
@@ -54,6 +56,7 @@ var DialplanLinter = (function () {
                                 node:     r.node,
                                 severity: rule.severity || 'info',
                                 ruleId:   rule.id       || 'unknown',
+                                type:     r.type       || rule.type       || '',
                                 message:  r.message     || rule.description || ''
                             });
                         }

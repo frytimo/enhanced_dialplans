@@ -1212,6 +1212,20 @@ require_once "resources/header.php";
 	cursor: default;
 	pointer-events: auto;
 }
+.node-lint-badge.gate-icon-badge {
+	width: 24px;
+	height: 13px;
+	border-radius: 1px;
+	padding: 0;
+	background: transparent;
+	color: inherit;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.node-lint-badge.gate-icon-badge svg {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
 .node-lint-badge.lint-error   { background: #c0392b; color: #fff; }
 .node-lint-badge.lint-warning  { background: #e67e22; color: #fff; }
 .node-lint-badge.lint-info     { background: #2980b9; color: #fff; }
@@ -2130,6 +2144,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		tree.children.push(newNode);
 		updateXmlFromTree();
 		renderTree();
+		updateGateConditionIndicators();
 	}
 
 	// Simple debounce helper
@@ -2203,6 +2218,11 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Apply badges to matching DOM elements
 		const severityOrder = {error: 3, warning: 2, info: 1};
 		const severityIcon  = {error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle'};
+		function formatFindingMessage(finding) {
+			var severity = (finding && finding.severity ? String(finding.severity) : 'info').toLowerCase();
+			var severityLabel = severity.charAt(0).toUpperCase() + severity.slice(1);
+			return severityLabel + ' - ' + (finding && finding.message ? finding.message : '');
+		}
 
 		document.querySelectorAll('.dialplan-node').forEach(function(el) {
 			if (!el._nodeData) return;
@@ -2219,8 +2239,17 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			if (!badge) return;
 
 			badge.className    = 'node-lint-badge lint-' + worst;
-			badge.title        = nodeFindings.map(function(f) { return f.message; }).join('\n');
-			badge.innerHTML    = '<i class="fas ' + (severityIcon[worst] || 'fa-info-circle') + '"></i>';
+			badge.title        = nodeFindings.map(function(f) { return formatFindingMessage(f); }).join('\n');
+			
+			// Use exit icon when any finding is typed as an exit point.
+			const hasGateCondition = nodeFindings.some(function(f) { return f.type === 'exit'; });
+			if (hasGateCondition) {
+				badge.classList.add('gate-icon-badge');
+				badge.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 474 250" width="16" height="16" preserveAspectRatio="xMidYMid meet" style="vertical-align: middle;"><rect width="474" height="250" fill="#0c845e"/><path d="M 318 128 L 258 104 L 256 104 L 256 117 L 255 118 L 188 118 L 188 138 L 255 138 L 256 139 L 256 152 L 261 151 Z" fill="#fff"/><path d="M 80 70 L 48 85 L 41 90 L 40 100 L 37 112 L 37 119 L 36 120 L 37 125 L 40 129 L 44 131 L 49 130 L 52 127 L 54 122 L 57 103 L 60 100 L 75 92 L 77 92 L 78 93 L 77 123 L 56 154 L 21 159 L 17 163 L 17 171 L 21 175 L 35 175 L 36 174 L 45 174 L 46 173 L 56 173 L 57 172 L 69 171 L 73 169 L 78 164 L 93 145 L 107 157 L 94 203 L 94 207 L 96 212 L 98 214 L 104 216 L 109 214 L 113 210 L 129 159 L 128 149 L 107 127 L 107 121 L 112 103 L 114 101 L 130 121 L 134 123 L 169 124 L 174 120 L 175 113 L 171 108 L 167 107 L 143 107 L 118 81 L 93 71 Z" fill="#fff"/><path d="M 108 38 L 104 40 L 98 47 L 97 54 L 99 61 L 103 66 L 110 70 L 120 70 L 124 68 L 129 63 L 130 50 L 127 44 L 122 40 L 117 38 Z" fill="#fff"/><path d="M 338 35 L 335 39 L 335 203 L 337 206 L 341 208 L 447 208 L 452 204 L 453 201 L 453 40 L 452 38 L 447 34 L 340 34 Z M 348 39 L 364 44 L 375 46 L 379 48 L 389 50 L 393 54 L 393 189 L 390 192 L 350 202 L 346 202 L 343 198 L 343 43 L 345 40 Z" fill="#fff" fill-rule="evenodd"/></svg>';
+			} else {
+				badge.classList.remove('gate-icon-badge');
+				badge.innerHTML = '<i class="fas ' + (severityIcon[worst] || 'fa-info-circle') + '"></i>';
+			}
 			badge.style.display = '';
 		});
 
@@ -2240,10 +2269,17 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const errors   = findings.filter(function(f) { return f.severity === 'error'; }).length;
 		const warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
 		const infos    = findings.filter(function(f) { return f.severity === 'info'; }).length;
+		const gateConditions = findings.filter(function(f) { return f.type === 'exit'; }).length;
+		const plainInfos = findings.filter(function(f) { return f.severity === 'info' && f.type !== 'exit'; }).length;
 		const parts = [];
 		if (errors)   parts.push('<span class="lint-summary-error"><i class="fas fa-times-circle"></i> ' + errors + '</span>');
 		if (warnings) parts.push('<span class="lint-summary-warning"><i class="fas fa-exclamation-triangle"></i> ' + warnings + '</span>');
-		if (infos)    parts.push('<span class="lint-summary-info"><i class="fas fa-info-circle"></i> ' + infos + '</span>');
+		if (gateConditions > 0) {
+			parts.push('<span class="lint-summary-info"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 474 250" width="14" height="14" preserveAspectRatio="xMidYMid meet" style="vertical-align: middle;"><rect width="474" height="250" fill="#0c845e"/><path d="M 318 128 L 258 104 L 256 104 L 256 117 L 255 118 L 188 118 L 188 138 L 255 138 L 256 139 L 256 152 L 261 151 Z" fill="#fff"/><path d="M 80 70 L 48 85 L 41 90 L 40 100 L 37 112 L 37 119 L 36 120 L 37 125 L 40 129 L 44 131 L 49 130 L 52 127 L 54 122 L 57 103 L 60 100 L 75 92 L 77 92 L 78 93 L 77 123 L 56 154 L 21 159 L 17 163 L 17 171 L 21 175 L 35 175 L 36 174 L 45 174 L 46 173 L 56 173 L 57 172 L 69 171 L 73 169 L 78 164 L 93 145 L 107 157 L 94 203 L 94 207 L 96 212 L 98 214 L 104 216 L 109 214 L 113 210 L 129 159 L 128 149 L 107 127 L 107 121 L 112 103 L 114 101 L 130 121 L 134 123 L 169 124 L 174 120 L 175 113 L 171 108 L 167 107 L 143 107 L 118 81 L 93 71 Z" fill="#fff"/><path d="M 108 38 L 104 40 L 98 47 L 97 54 L 99 61 L 103 66 L 110 70 L 120 70 L 124 68 L 129 63 L 130 50 L 127 44 L 122 40 L 117 38 Z" fill="#fff"/><path d="M 338 35 L 335 39 L 335 203 L 337 206 L 341 208 L 447 208 L 452 204 L 453 201 L 453 40 L 452 38 L 447 34 L 340 34 Z M 348 39 L 364 44 L 375 46 L 379 48 L 389 50 L 393 54 L 393 189 L 390 192 L 350 202 L 346 202 L 343 198 L 343 43 L 345 40 Z" fill="#fff" fill-rule="evenodd"/></svg> ' + gateConditions + '</span>');
+		}
+		if (plainInfos) {
+			parts.push('<span class="lint-summary-info"><i class="fas fa-info-circle"></i> ' + plainInfos + '</span>');
+		}
 		summaryEl.innerHTML    = parts.join('');
 		summaryEl.style.display = '';
 	}
@@ -2303,6 +2339,37 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		ping();
 	}
 
+	// Helper function to check if a condition is a gate
+	function isGateCondition(node) {
+		return node.type === 'condition' &&
+		       node.enabled !== false &&
+		       !node.isRegexCondition &&
+		       node.attributes.break !== 'never' &&
+		       (!node.children || node.children.length === 0);
+	}
+
+	// Update gate condition indicators on all rendered nodes
+	function updateGateConditionIndicators() {
+		document.querySelectorAll('.dialplan-node').forEach(function(el) {
+			if (!el._nodeData) return;
+			const node = el._nodeData;
+			
+			if (node.type === 'condition') {
+				if (isGateCondition(node)) {
+					// Mark gate conditions so lint badge logic can distinguish them if needed.
+					if (!el.classList.contains('gate-condition')) {
+						el.classList.add('gate-condition');
+					}
+				} else {
+					// Remove gate-condition class if not a gate.
+					if (el.classList.contains('gate-condition')) {
+						el.classList.remove('gate-condition');
+					}
+				}
+			}
+		});
+	}
+
 	// Create DOM element for a node
 	function createNodeElement(node, index, parentArray, parentNode) {
 		const div = document.createElement('div');
@@ -2310,8 +2377,15 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const isRegexCond = (node.type === 'condition' && (node.isRegexCondition || node.attributes.regex));
 		// Ensure the flag is set for future operations
 		if (isRegexCond) node.isRegexCondition = true;
+		
+		// Check if this is a gate condition
+		const isGate = isGateCondition(node);
+		
 		// Apply 'condition' class for both regular and regex conditions for consistent sizing
 		div.className = 'dialplan-node ' + node.type;
+		if (isGate) {
+			div.classList.add('gate-condition');
+		}
 		div.dataset.nodeId = 'node-' + (nodeCounter++);
 		div.dataset.nodeIndex = index;
 
@@ -2428,6 +2502,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				form.appendChild(createBreakButtonGroup(node.attributes.break || '', function(val) {
 					node.attributes.break = val;
 					updateXmlFromTree();
+					updateGateConditionIndicators();
 				}));
 			}
 
@@ -2443,6 +2518,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			form.appendChild(createBreakButtonGroup(node.attributes.break || '', function(val) {
 				node.attributes.break = val;
 				updateXmlFromTree();
+				updateGateConditionIndicators();
 			}));
 
 		} else if (node.type === 'action' || node.type === 'anti-action') {
@@ -2492,6 +2568,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				parentArray.splice(index, 1);
 				updateXmlFromTree();
 				renderTree();
+				updateGateConditionIndicators();
 			};
 		}
 		// Lint badge — populated by runLinter() after renderTree()
@@ -2590,6 +2667,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 					node.children.push(newNode);
 					updateXmlFromTree();
 					renderTree();
+					updateGateConditionIndicators();
 				};
 				addBtns.appendChild(btn);
 			});
@@ -2626,6 +2704,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 		updateXmlFromTree();
 		renderTree(); // Re-render to update child states
+		updateGateConditionIndicators();
 	}
 
 	// Recursively disable all children (simulates clicking off their toggles)

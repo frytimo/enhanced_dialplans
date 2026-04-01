@@ -5,7 +5,7 @@
  * editor.  Each rule is evaluated by DialplanLinter.run(tree, rules).
  *
  * Adding a custom rule:
- *   Push an object with { id, severity, description, check } into this array.
+ *   Push an object with { id, severity, type, description, check } into this array.
  *   check(tree) must return an array of { node, message } objects.
  *   Exceptions thrown inside check() are silently swallowed by the engine.
  *
@@ -87,6 +87,7 @@ var DialplanLintRules = (function () {
         {
             id:          'gate-condition',
             severity:    'info',
+            type:        'exit',
             description: 'Condition with no actions acts as a gate (halts the extension if the condition fails)',
             check: function (tree) {
                 var findings = [];
@@ -101,7 +102,7 @@ var DialplanLintRules = (function () {
                         if (enabledChildren.length === 0) {
                             findings.push({
                                 node:    node,
-                                message: 'Gate condition: no actions — if this condition fails the extension stops (break="on-false" default)'
+                                message: 'Exit Point: If this condition fails the processing stops and moves to the next dialplan (break="on-false" default)'
                             });
                         }
                     }
@@ -237,7 +238,7 @@ var DialplanLintRules = (function () {
         // considered sufficient to intentionally suppress this warning.
         {
             id:          'break-never-empty-condition',
-            severity:    'warning',
+            severity:    'error',
             description: 'Condition uses break="never" but has no child nodes',
             check: function (tree) {
                 var findings = [];
