@@ -631,22 +631,8 @@ $template->assign('th_order_col', $th_order_col);
 $template->assign('th_enabled', $th_enabled);
 $template->assign('th_description', $th_description);
 
-if (!class_exists('app')) {
-	// no-op class definition to prevent errors when app class does not exist (such as when this page is included in another app)
-	class app {
-		public static function dispatch_list_pre_render($hook, $url, $template) {
-			// no-op
-		}
-		public static function dispatch_list_post_render($hook, $url, $html) {
-			// no-op
-		}
-	}
-}
-
-if (class_exists('app')) {
-	// invoke pre-render hook
-	app::dispatch_list_pre_render('dialplan_list_page_hook', $url, $template);
-}
+// invoke pre-render hook
+app::dispatch_list_pre_render('dialplan_list_page_hook', $url, $template);
 
 // include the header
 $document['title'] = $page_title;
@@ -655,10 +641,8 @@ require_once "resources/header.php";
 // render the template
 $html = $template->render('dialplans_list.tpl');
 
-if (class_exists('app')) {
-	// invoke post-render hook
-	app::dispatch_list_post_render('dialplan_list_page_hook', $url, $html);
-}
+// invoke post-render hook
+app::dispatch_list_post_render('dialplan_list_page_hook', $url, $html);
 
 echo $html;
 

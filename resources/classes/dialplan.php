@@ -26,11 +26,18 @@
 
 // Declare app class when not in playground
 if (!class_exists('app')) {
+	// no-op class definition to prevent errors when app class does not exist (such as when this page is included in another app)
 	class app {
 		protected $database;
 		protected $settings;
 		public function __construct() {
 			// Placeholder constructor for the app class
+		}
+		public static function dispatch_list_pre_render($hook, $url, $template) {
+			// no-op
+		}
+		public static function dispatch_list_post_render($hook, $url, $html) {
+			// no-op
 		}
 	}
 }
