@@ -549,7 +549,7 @@ require_once "resources/header.php";
 	color: #d9534f;
 }
 
-/* Sync status indicator */
+/* Save status indicator (unsaved changes) */
 .sync-status {
 	display: inline-flex;
 	align-items: center;
@@ -560,14 +560,15 @@ require_once "resources/header.php";
 	margin-left: 15px;
 }
 
-.sync-status.synced {
+.sync-status.saved {
 	background: #dff0d8;
 	color: #3c763d;
 }
 
-.sync-status.stale {
+.sync-status.unsaved {
 	background: #fcf8e3;
 	color: #8a6d3b;
+	font-weight: 600;
 }
 
 .sync-status.error {
@@ -1522,10 +1523,10 @@ require_once "resources/header.php";
 		echo button::create(['type' => 'button', 'label' => $text['button-back'], 'icon' => $settings->get('theme', 'button_icon_back'), 'id' => 'btn_back', 'link' => $url->set_path('/app/visual_dialplans/dialplans.php')->unset_query_param('id')->build_absolute()]);
 		?>
 
-		<!-- Sync Status Indicator -->
-		<span id="sync-status" class="sync-status synced">
+		<!-- Save Status Indicator -->
+		<span id="sync-status" class="sync-status saved">
 			<i class="fas fa-check-circle"></i>
-			<span id="sync-status-text"><?php echo $text['label-in_sync'] ?? 'In sync'; ?></span>
+			<span id="sync-status-text"><?php echo $text['label-saved'] ?? 'Saved'; ?></span>
 		</span>
 		<span id="lint-summary"></span>
 
@@ -1860,6 +1861,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	// State management
 	let syncState = 'synced'; // 'synced', 'stale', 'error'
 	let isDirty = false;
+	let savedXml = null;   // XML string snapshotted at last save / page-load
+	let savedMeta = null;  // Metadata field values snapshotted at last save / page-load
 	let tree = null;
 	let editor = null;
 	let nodeCounter = 0;
@@ -1917,6 +1920,13 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (label) {
 			label.textContent = isChecked ? '<?php echo $text['option-true'] ?? 'True'; ?>' : '<?php echo $text['option-false'] ?? 'False'; ?>';
 		}
+		// For continue (part of extension XML), regenerate XML to keep ACE in sync.
+		// For other metadata fields (destination), compare against saved baseline.
+		if (fieldName === 'dialplan_continue' && tree) {
+			updateXmlFromTree();
+		} else {
+			checkDirtyState();
+		}
 	};
 
 	// Update dialplan enabled state - controls visual editor availability
@@ -1940,6 +1950,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				overlay.classList.remove('hidden');
 			}
 		}
+		checkDirtyState();
 	};
 
 	// Dismiss migration warning
@@ -1978,6 +1989,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			skipAceChange = false;
 		}
 
+		// Snapshot the just-loaded XML as the saved baseline so dirty detection starts clean.
+		recordSavedBaseline();
+
 		// Live XML->visual sync while editing (debounced to keep typing responsive)
 		const debouncedSyncFromXml = debounce(function() {
 			syncTreeFromEditorXml();
@@ -1985,8 +1999,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 		editor.on('change', function() {
 			if (skipAceChange) return;
-			isDirty = true;
-			notifyPopupDirtyState();
+			checkDirtyState();
 			debouncedSyncFromXml();
 		});
 
@@ -2009,31 +2022,37 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 	}
 
-	// Set sync state and update UI
+	// Set dirty/saved state and update the status badge
+	function setDirtyState(dirty) {
+		const statusEl = document.getElementById('sync-status');
+		if (!statusEl) return;
+		if (dirty) {
+			statusEl.className = 'sync-status unsaved';
+			statusEl.innerHTML = '<i class="fas fa-pencil-alt"></i> <span id="sync-status-text"><?php echo $text['label-unsaved_changes'] ?? 'Unsaved changes'; ?></span>';
+		} else {
+			statusEl.className = 'sync-status saved';
+			statusEl.innerHTML = '<i class="fas fa-check-circle"></i> <span id="sync-status-text"><?php echo $text['label-saved'] ?? 'Saved'; ?></span>';
+		}
+	}
+
+	// Set sync state — manages the visual↔XML overlay only; dirty badge is handled by setDirtyState
 	function setSyncState(state, errorMessage) {
 		syncState = state;
-		const statusEl = document.getElementById('sync-status');
-		const statusText = document.getElementById('sync-status-text');
 		const overlay = document.getElementById('ui-overlay');
 		const overlayMessage = document.getElementById('overlay-message');
 
-		statusEl.className = 'sync-status ' + state;
-
 		switch (state) {
 			case 'synced':
-				statusEl.innerHTML = '<i class="fas fa-check-circle"></i> <span id="sync-status-text"><?php echo $text['label-in_sync'] ?? 'In sync'; ?></span>';
 				overlay.classList.add('hidden');
 				overlay.classList.remove('stale', 'error');
 				break;
 			case 'stale':
-				statusEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <span id="sync-status-text"><?php echo $text['label-ui_outdated'] ?? 'UI outdated'; ?></span>';
 				overlay.classList.remove('hidden', 'error');
 				overlay.classList.add('stale');
 				overlayMessage.textContent = '<?php echo $text['message-xml_modified'] ?? 'XML modified — visual editor is out of sync'; ?>';
 				overlay.querySelector('.overlay-icon').innerHTML = '<i class="fas fa-sync-alt"></i>';
 				break;
 			case 'error':
-				statusEl.innerHTML = '<i class="fas fa-times-circle"></i> <span id="sync-status-text"><?php echo $text['label-parse_error'] ?? 'Parse error'; ?></span>';
 				overlay.classList.remove('hidden', 'stale');
 				overlay.classList.add('error');
 				overlayMessage.textContent = errorMessage || '<?php echo $text['message-parse_error'] ?? 'Unable to visualize — XML has errors'; ?>';
@@ -2048,6 +2067,42 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				error: errorMessage || ''
 			});
 		}
+	}
+
+	// Compute dirty state by comparing current editor XML and metadata against the saved baseline.
+	// This is more reliable than a boolean flag — correctly handles undo/redo and popup edits.
+	function checkDirtyState() {
+		if (!editor || savedXml === null) return;
+		let dirty = editor.getValue() !== savedXml;
+		if (!dirty && savedMeta) {
+			const val = function(id) { const el = document.getElementById(id); return el ? el.value : ''; };
+			dirty = val('dialplan_name')    !== (savedMeta.name        || '')
+			     || val('dialplan_number')  !== (savedMeta.number      || '')
+			     || val('dialplan_context') !== (savedMeta.context     || '')
+			     || val('dialplan_order')   !== (savedMeta.order       || '')
+			     || val('dialplan_destination') !== (savedMeta.destination || '')
+			     || val('dialplan_enabled') !== (savedMeta.enabled     || '');
+		}
+		isDirty = dirty;
+		setDirtyState(isDirty);
+		if (xmlChannel) {
+			xmlChannel.postMessage({ type: 'dirty-state', dirty: isDirty });
+		}
+	}
+
+	// Snapshot the current XML and metadata as the saved baseline (call after page-load and after save).
+	function recordSavedBaseline() {
+		if (!editor) return;
+		savedXml = editor.getValue();
+		const val = function(id) { const el = document.getElementById(id); return el ? el.value : ''; };
+		savedMeta = {
+			name:        val('dialplan_name'),
+			number:      val('dialplan_number'),
+			context:     val('dialplan_context'),
+			order:       val('dialplan_order'),
+			destination: val('dialplan_destination'),
+			enabled:     val('dialplan_enabled'),
+		};
 	}
 
 	// Parse XML from ACE and keep the visual tree in sync while typing.
@@ -2326,7 +2381,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				skipAceChange = true;
 				editor.setValue(e.data.xml, -1);
 				skipAceChange = false;
-				isDirty = true;
+				checkDirtyState();
 				syncTreeFromEditorXml();
 			} else if (e.data.type === 'save-request') {
 				// Save requested from popup using the same validation/modals as main Save button.
@@ -3388,8 +3443,6 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	// Update XML from tree (UI -> XML sync)
 	function updateXmlFromTree() {
 		if (!tree) return;
-		isDirty = true;
-		notifyPopupDirtyState();
 
 		// Update extension attributes from form
 		tree.attributes.name = document.getElementById('dialplan_name').value || '';
@@ -3400,6 +3453,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		skipAceChange = true;
 		editor.setValue(xml, -1);
 		skipAceChange = false;
+		checkDirtyState();
 
 		// Stay in synced state since UI changed the XML
 		setSyncState('synced');
@@ -3715,6 +3769,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	}
 
 	function notifyPopupDirtyState() {
+		setDirtyState(isDirty);
 		if (xmlChannel) {
 			xmlChannel.postMessage({
 				type: 'dirty-state',
@@ -3783,8 +3838,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 		notifyPopupSaveState('start');
 
-		isDirty = false;
-		notifyPopupDirtyState();
+		recordSavedBaseline();
+		checkDirtyState();
 		return true;
 	});
 
@@ -3793,8 +3848,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		modal_close();
 		keepPopoutOpenOnUnload = true;
 		document.getElementById('dialplan_xml_hidden').value = editor.getValue();
-		isDirty = false;
-		notifyPopupDirtyState();
+		recordSavedBaseline();
+		checkDirtyState();
 		document.getElementById('frm').submit();
 	};
 
@@ -3836,6 +3891,14 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		isMobile = e.matches;
 		setTimeout(function() { if (editor) editor.resize(); }, 100);
 	});
+
+	// Track changes to metadata fields not reflected in the XML (number, context, order)
+	['dialplan_number', 'dialplan_context'].forEach(function(id) {
+		const el = document.getElementById(id);
+		if (el) el.addEventListener('input', checkDirtyState);
+	});
+	const orderEl = document.getElementById('dialplan_order');
+	if (orderEl) orderEl.addEventListener('change', checkDirtyState);
 
 	// Sync dialplan name with extension name
 	document.getElementById('dialplan_name').addEventListener('input', function() {
