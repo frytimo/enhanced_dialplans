@@ -1216,11 +1216,17 @@ require_once "resources/header.php";
 	flex-shrink: 0;
 	cursor: default;
 	pointer-events: auto;
+	position: absolute;
+	top: -2px;
+	right: -2px;
+	z-index: 20;
 }
 .node-lint-badge.gate-icon-badge {
-	width: 24px;
-	height: 13px;
-	border-radius: 1px;
+	width: 28px;
+	height: 16px;
+	border-radius: 3px;
+	top: -2px;
+	right: -2px;
 	padding: 0;
 	background: transparent;
 	color: inherit;
@@ -2240,7 +2246,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				if ((severityOrder[f.severity] || 0) > (severityOrder[worst] || 0)) worst = f.severity;
 			});
 
-			const badge = el.querySelector(':scope > .dialplan-node-content > .dialplan-node-actions > .node-lint-badge');
+			const badge = el.querySelector(':scope > .node-lint-badge');
 			if (!badge) return;
 
 			badge.className    = 'node-lint-badge lint-' + worst;
@@ -2576,11 +2582,11 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				updateGateConditionIndicators();
 			};
 		}
-		// Lint badge — populated by runLinter() after renderTree()
+		// Lint badge — floated at top-right corner of the node card; populated by runLinter() after renderTree()
 		const lintBadge = document.createElement('span');
 		lintBadge.className = 'node-lint-badge';
 		lintBadge.style.display = 'none';
-		actions.appendChild(lintBadge);
+		div.appendChild(lintBadge);
 		actions.appendChild(deleteBtn);
 		contentRow.appendChild(actions);
 
