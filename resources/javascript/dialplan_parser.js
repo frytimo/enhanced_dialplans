@@ -14,7 +14,7 @@
  *
  * Node structure:
  *   {
- *     type: 'condition' | 'action' | 'anti-action' | 'regex',
+ *     type: 'condition' | 'action' | 'anti-action' | 'regex' | 'comment',
  *     attributes: { ... type-specific ... },
  *     children: [ <node>, ... ],  // only for conditions
  *     enabled: true | false,
@@ -25,6 +25,7 @@
  * Condition attributes (regex):    { regex, break }
  * Action/Anti-action attributes:   { application, data, inline }
  * Regex child attributes:          { field, expression, break }
+ * Comment attributes:              { text }
  */
 var DialplanParser = (function () {
     'use strict';
@@ -126,7 +127,11 @@ var DialplanParser = (function () {
                             var innerComment = inner.nodeValue.trim();
                             if (innerComment === '<\/condition>') { i++; break; }
                             var disabledInner = parseDisabledElement(innerComment, parentIsRegexCondition);
-                            if (disabledInner !== null) condChildren.push(disabledInner);
+                            if (disabledInner !== null) {
+                                condChildren.push(disabledInner);
+                            } else {
+                                condChildren.push(parseCommentNode(innerComment));
+                            }
                         } else if (inner.nodeType === 1) {
                             var innerParsed = parseNode(inner);
                             if (innerParsed !== null) condChildren.push(innerParsed);
@@ -153,6 +158,8 @@ var DialplanParser = (function () {
                 var disabledNode = parseDisabledElement(commentText, parentIsRegexCondition);
                 if (disabledNode !== null) {
                     result.push(disabledNode);
+                } else {
+                    result.push(parseCommentNode(commentText));
                 }
 
                 i++;
@@ -302,6 +309,22 @@ var DialplanParser = (function () {
     }
 
     /**
+     * Convert a plain XML comment into a comment node.
+     *
+     * @param {string} commentText
+     * @returns {object}
+     */
+    function parseCommentNode(commentText) {
+        return {
+            type: 'comment',
+            attributes: {
+                text: unescapeCommentText(commentText || '')
+            },
+            enabled: true
+        };
+    }
+
+    /**
      * Generate a dialplan XML string from a tree structure.
      * Disabled nodes (enabled === false) are omitted from the output so that
      * FreeSWITCH does not execute them.
@@ -345,6 +368,9 @@ var DialplanParser = (function () {
         }
         if (node.type === 'regex') {
             return regexToXml(node, indent);
+        }
+        if (node.type === 'comment') {
+            return commentToXml(node, indent);
         }
         return '';
     }
@@ -422,6 +448,49 @@ var DialplanParser = (function () {
             return indent + '<!--' + tag + '-->\n';
         }
         return indent + tag + '\n';
+    }
+
+    function commentToXml(node, indent) {
+        var text = sanitizeXmlCommentText((node.attributes && node.attributes.text) || '');
+        var tag = '<!-- ' + text + ' -->';
+        // Comment nodes are always comments in XML and are intentionally never
+        // treated as executable enabled/disabled dialplan logic.
+        return indent + tag + '\n';
+    }
+
+    /**
+     * Escape comment text for safe XML comments and to avoid matching
+     * disabled-node parser patterns (e.g. <!-- <action .../> -->).
+     *
+     * @param {string} str
+     * @returns {string}
+     */
+    function sanitizeXmlCommentText(str) {
+        var value = String(str || '');
+        value = value
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/--/g, '- -');
+
+        // XML comments cannot end with '-'
+        if (value.slice(-1) === '-') {
+            value += ' ';
+        }
+
+        return value;
+    }
+
+    /**
+     * Unescape comment text rendered with sanitizeXmlCommentText().
+     *
+     * @param {string} str
+     * @returns {string}
+     */
+    function unescapeCommentText(str) {
+        return String(str || '')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
     }
 
     /**

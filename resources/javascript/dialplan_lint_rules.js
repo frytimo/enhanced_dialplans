@@ -34,6 +34,26 @@ var DialplanLintRules = (function () {
         }
     }
 
+    /**
+     * Returns true when a condition has at least one meaningful child.
+     *
+     * Comment nodes count as meaningful by design so users can document why a
+     * break="never" gate exists and intentionally suppress related warnings.
+     *
+     * @param {Array} children
+     * @returns {boolean}
+     */
+    function hasMeaningfulConditionChild(children) {
+        if (!children || !children.length) return false;
+        for (var i = 0; i < children.length; i++) {
+            var child = children[i];
+            if (!child) continue;
+            if (child.type === 'comment') return true;
+            if (child.enabled !== false) return true;
+        }
+        return false;
+    }
+
     var rules = [
 
         // ── Rule 1 ───────────────────────────────────────────────────────────
@@ -207,6 +227,31 @@ var DialplanLintRules = (function () {
                         message: 'break="never" on the last condition is redundant — there are no further conditions to continue to'
                     });
                 }
+                return findings;
+            }
+        },
+
+        // ── Rule 6 ───────────────────────────────────────────────────────────
+        // A condition with break="never" and no child nodes is effectively a
+        // no-op and adds unnecessary parse overhead.  A comment child is
+        // considered sufficient to intentionally suppress this warning.
+        {
+            id:          'break-never-empty-condition',
+            severity:    'warning',
+            description: 'Condition uses break="never" but has no child nodes',
+            check: function (tree) {
+                var findings = [];
+                walkNodes(tree.children, function (node) {
+                    if (node.type !== 'condition' || node.enabled === false) return;
+                    if ((node.attributes && node.attributes.break) !== 'never') return;
+
+                    if (!hasMeaningfulConditionChild(node.children || [])) {
+                        findings.push({
+                            node:    node,
+                            message: 'break="never" with no children is a no-op; add an action/condition or a comment child to document intent'
+                        });
+                    }
+                });
                 return findings;
             }
         }

@@ -389,6 +389,8 @@ $node_color_anti_action = $settings->get('dialplan', 'node_color_anti_action', '
 $node_color_anti_action_hover = $settings->get('dialplan', 'node_color_anti_action_hover', '#F57C00');
 $node_color_regex = $settings->get('dialplan', 'node_color_regex', '#9C27B0');
 $node_color_regex_hover = $settings->get('dialplan', 'node_color_regex_hover', '#7B1FA2');
+$node_color_comment = $settings->get('dialplan', 'node_color_comment', '#000000');
+$node_color_comment_hover = $settings->get('dialplan', 'node_color_comment_hover', '#111111');
 
 // toggle switch colors (for theming)
 $toggle_color_enabled = $settings->get('dialplan', 'toggle_color_enabled', '#2e82d0');
@@ -595,8 +597,14 @@ require_once "resources/header.php";
 .dialplan-node.condition,
 .dialplan-node.action,
 .dialplan-node.anti-action,
-.dialplan-node.regex {
+.dialplan-node.regex,
+.dialplan-node.comment {
 	border-left: none;
+}
+
+/* Give comment rows extra height so the side label can fit comfortably. */
+.dialplan-node.comment {
+	min-height: 52px;
 }
 
 /* Left border drag zone with rotated label - base styling */
@@ -691,6 +699,22 @@ require_once "resources/header.php";
 		<?php echo $node_color_regex_hover; ?>cc
 	);
 	border-color: <?php echo $node_color_regex_hover; ?>;
+}
+
+.dialplan-node-drag-zone.type-comment {
+	background: linear-gradient(to bottom,
+			<?php echo $node_color_comment; ?>,
+			<?php echo $node_color_comment; ?>cc
+	);
+	border-color: <?php echo $node_color_comment; ?>;
+}
+
+.dialplan-node-drag-zone.type-comment:hover {
+	background: linear-gradient(to bottom,
+			<?php echo $node_color_comment_hover; ?>,
+			<?php echo $node_color_comment_hover; ?>cc
+	);
+	border-color: <?php echo $node_color_comment_hover; ?>;
 }
 
 /* Regex condition (condition with regex="all" etc.) - uses regex colors */
@@ -965,6 +989,11 @@ require_once "resources/header.php";
 .node-status-dot { display: none; }
 <?php endif; ?>
 
+/* Comments are always non-executable annotations, so never show an LED/status light. */
+.dialplan-node.comment > .node-status-dot {
+	display: none !important;
+}
+
 /* Compact button group (BREAK, REGEX mode) — rocker style */
 .compact-btn-group-wrapper {
 	flex: 0 0 auto;
@@ -1139,6 +1168,11 @@ require_once "resources/header.php";
 	padding: 4px 8px;
 	height: 28px;
 	min-width: 28px;
+	color: #000;
+}
+
+.dialplan-node-actions .btn i {
+	color: #000;
 }
 
 /* Add node buttons */
@@ -1663,6 +1697,9 @@ require_once "resources/header.php";
 						<button type="button" class="add-node-btn" onclick="addNode('regex-condition');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-regex_condition'] ?? 'Regex'; ?>
 						</button>
+						<button type="button" class="add-node-btn" onclick="addNode('comment');">
+							<i class="fas fa-plus"></i> <?php echo $text['option-comment'] ?? 'Comment'; ?>
+						</button>
 					</div>
 				</div>
 			</div>
@@ -2085,6 +2122,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 					enabled: true
 				});
 			}
+		} else if (actualType === 'comment') {
+			newNode.attributes = { text: '' };
 		} else {
 			newNode.attributes = { application: '', data: '', inline: '' };
 		}
@@ -2295,7 +2334,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const nodeTypeClass = 'type-' + displayType.replace('_', '-');
 		dragZone.className = 'dialplan-node-drag-zone ' + nodeTypeClass;
 		dragZone.draggable = true;
-		dragZone.title = '<?php echo $text['label-drag_to_reorder'] ?? 'Click to enable/disable · Drag to reorder'; ?>';
+		dragZone.title = node.type === 'comment'
+			? '<?php echo $text['label-drag_to_reorder'] ?? 'Drag to reorder'; ?>'
+			: '<?php echo $text['label-drag_to_reorder'] ?? 'Click to enable/disable · Drag to reorder'; ?>';
 
 		// Add rotated label text
 		const typeLabel = document.createElement('span');
@@ -2305,13 +2346,27 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			typeLabel.textContent = 'RegEx';
 		} else if (node.type === 'anti-action') {
 			typeLabel.textContent = 'Anti';
+		} else if (node.type === 'comment') {
+			typeLabel.textContent = 'Comment';
 		} else {
 			typeLabel.textContent = node.type.charAt(0).toUpperCase() + node.type.slice(1);
+		}
+		// Auto-scale side label font size for longer translated labels.
+		const labelLength = (typeLabel.textContent || '').length;
+		if (labelLength > 10) {
+			typeLabel.style.fontSize = '8px';
+			typeLabel.style.letterSpacing = '0';
+		} else if (labelLength > 6) {
+			typeLabel.style.fontSize = '9px';
+			typeLabel.style.letterSpacing = '0';
 		}
 		dragZone.appendChild(typeLabel);
 
 		// Set initial disabled state
-		if (node.enabled === false) {
+		if (node.type === 'comment') {
+			node.enabled = true;
+			div.classList.remove('node-disabled');
+		} else if (node.enabled === false) {
 			div.classList.add('node-disabled');
 		} else {
 			node.enabled = true;
@@ -2333,6 +2388,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		});
 		dragZone.addEventListener('click', function(e) {
 			if (isDragging) return;
+			if (node.type === 'comment') return;
 			e.stopPropagation();
 			toggleNodeEnabled(node, div);
 		});
@@ -2402,6 +2458,11 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				node.attributes.inline = val;
 				updateXmlFromTree();
 			}));
+		} else if (node.type === 'comment') {
+			form.appendChild(createFormField('Comment', 'text', node.attributes.text || '', function(val) {
+				node.attributes.text = val;
+				updateXmlFromTree();
+			}, null, 'field-data'));
 		}
 
 		contentRow.appendChild(form);
@@ -2483,6 +2544,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			// Both can have actions and anti-actions
 			buttonConfigs.push(['action', 'Action', 'action', false]);
 			buttonConfigs.push(['anti-action', 'Anti-action', 'anti-action', false]);
+			buttonConfigs.push(['comment', 'Comment', 'comment', false]);
 
 			// Both can have nested conditions
 			buttonConfigs.push(['condition', 'Condition', 'condition', false]);
@@ -2520,6 +2582,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 					} else if (actualType === 'regex') {
 						// Regex child element - just field/expression, no children
 						newNode.attributes = { field: '', expression: '', break: '' };
+					} else if (actualType === 'comment') {
+						newNode.attributes = { text: '' };
 					} else {
 						newNode.attributes = { application: '', data: '', inline: '' };
 					}
