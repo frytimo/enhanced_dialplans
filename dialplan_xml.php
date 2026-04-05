@@ -45,8 +45,8 @@ $dialplan_uuid = $_REQUEST['id'] ?? '';
 $app_uuid = $_REQUEST['app_uuid'] ?? '';
 $dialplan_xml = $_REQUEST['dialplan_xml'] ?? '';
 
-// check the dialplan_uuid is a uuid
-if (!is_uuid($dialplan_uuid)) {
+// when provided, dialplan_uuid must be valid
+if (!empty($dialplan_uuid) && !is_uuid($dialplan_uuid)) {
 	echo "invalid dialplan uuid";
 	exit;
 }

@@ -436,7 +436,18 @@ if (!empty($dialplans) && $has_show_delete) {
 }
 $btn_xml = '';
 if ($has_dialplan_xml) {
-	$btn_xml = button::create(['type' => 'button', 'label' => $text['button-xml'], 'icon' => 'code', 'style' => 'margin-left: 3px;', 'link' => 'dialplan_xml.php']);
+	$xml_link = PROJECT_PATH . '/app/visual_dialplans/dialplan_xml.php';
+	$xml_params = [];
+	if (is_uuid($app_uuid)) {
+		$xml_params[] = 'app_uuid=' . urlencode($app_uuid);
+	}
+	if (!empty($context)) {
+		$xml_params[] = 'context=' . urlencode($context);
+	}
+	if (!empty($xml_params)) {
+		$xml_link .= '?' . implode('&', $xml_params);
+	}
+	$btn_xml = button::create(['type' => 'button', 'label' => $text['button-xml'], 'icon' => 'code', 'style' => 'margin-left: 3px;', 'link' => $xml_link]);
 }
 $show_all_params = [];
 if (!empty($app_uuid)) {
