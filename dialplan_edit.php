@@ -102,6 +102,16 @@ if (!empty($_REQUEST['app_uuid']) && is_uuid($_REQUEST['app_uuid'])) {
 // set the action
 $action = !empty($dialplan_uuid) ? 'update' : 'add';
 
+function ajax_save_response($success, $message, $extra = [], $http_status = 200) {
+	http_response_code($http_status);
+	header('Content-Type: application/json');
+	echo json_encode(array_merge([
+		'success' => $success,
+		'message' => $message,
+	], $extra));
+	exit;
+}
+
 // get user preferences for XML panel visibility
 $xml_panel_visible = true;
 if (!empty($_SESSION['user_settings']['dialplan_editor_xml_visible']['text'])) {
@@ -109,7 +119,7 @@ if (!empty($_SESSION['user_settings']['dialplan_editor_xml_visible']['text'])) {
 }
 
 // handle AJAX requests
-if (!empty($_POST['ajax_action'])) {
+if (!empty($_POST['ajax_action']) && $_POST['ajax_action'] === 'save_xml_visibility') {
 	// validate the token
 	$token = new token;
 	if (!$token->validate($_SERVER['PHP_SELF'])) {
@@ -118,39 +128,42 @@ if (!empty($_POST['ajax_action'])) {
 		exit;
 	}
 
-	switch ($_POST['ajax_action']) {
-		case 'save_xml_visibility':
-			// save user preference for XML panel visibility
-			$visible = $_POST['visible'] === 'true' ? 'true' : 'false';
-			$array['user_settings'][0]['user_setting_uuid'] = uuid();
-			$array['user_settings'][0]['user_uuid'] = $_SESSION['user_uuid'];
-			$array['user_settings'][0]['domain_uuid'] = $_SESSION['domain_uuid'];
-			$array['user_settings'][0]['user_setting_category'] = 'dialplan_editor';
-			$array['user_settings'][0]['user_setting_subcategory'] = 'xml_visible';
-			$array['user_settings'][0]['user_setting_name'] = 'text';
-			$array['user_settings'][0]['user_setting_value'] = $visible;
-			$array['user_settings'][0]['user_setting_enabled'] = 'true';
+	// save user preference for XML panel visibility
+	$visible = $_POST['visible'] === 'true' ? 'true' : 'false';
+	$array['user_settings'][0]['user_setting_uuid'] = uuid();
+	$array['user_settings'][0]['user_uuid'] = $_SESSION['user_uuid'];
+	$array['user_settings'][0]['domain_uuid'] = $_SESSION['domain_uuid'];
+	$array['user_settings'][0]['user_setting_category'] = 'dialplan_editor';
+	$array['user_settings'][0]['user_setting_subcategory'] = 'xml_visible';
+	$array['user_settings'][0]['user_setting_name'] = 'text';
+	$array['user_settings'][0]['user_setting_value'] = $visible;
+	$array['user_settings'][0]['user_setting_enabled'] = 'true';
 
-			$p = permissions::new();
-			$p->add('user_setting_add', 'temp');
-			$p->add('user_setting_edit', 'temp');
-			$database->save($array, false);
-			$p->delete('user_setting_add', 'temp');
-			$p->delete('user_setting_edit', 'temp');
+	$p = permissions::new();
+	$p->add('user_setting_add', 'temp');
+	$p->add('user_setting_edit', 'temp');
+	$database->save($array, false);
+	$p->delete('user_setting_add', 'temp');
+	$p->delete('user_setting_edit', 'temp');
 
-			$_SESSION['user_settings']['dialplan_editor_xml_visible']['text'] = $visible;
+	$_SESSION['user_settings']['dialplan_editor_xml_visible']['text'] = $visible;
 
-			header('Content-Type: application/json');
-			echo json_encode(['success' => true]);
-			exit;
-	}
+	header('Content-Type: application/json');
+	echo json_encode(['success' => true]);
+	exit;
 }
 
 // process the HTTP POST for saving
 if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
+	$is_ajax_save = !empty($_POST['ajax_action']) && $_POST['ajax_action'] === 'save_dialplan';
+	$field_errors = [];
+
 	// validate the token
 	$token = new token;
 	if (!$token->validate($_SERVER['PHP_SELF'])) {
+		if ($is_ajax_save) {
+			ajax_save_response(false, $text['message-invalid_token'], [], 403);
+		}
 		message::add($text['message-invalid_token'], 'negative');
 		header($url->set_path('dialplans.php')->to_location_header());
 		exit;
@@ -189,6 +202,9 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 	}
 
 	if (!$dialplan_valid) {
+		if ($is_ajax_save) {
+			ajax_save_response(false, $text['message-invalid_xml'] ?? 'XML contains invalid or dangerous content.');
+		}
 		message::add($text['message-invalid_xml'] ?? 'XML contains invalid or dangerous content.', 'negative');
 		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
@@ -196,6 +212,10 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 
 	// check for required fields
 	if (empty($dialplan_name)) {
+		$field_errors['dialplan_name'] = $text['message-required'] . $text['label-name'];
+		if ($is_ajax_save) {
+			ajax_save_response(false, $field_errors['dialplan_name'], ['field_errors' => $field_errors]);
+		}
 		message::add($text['message-required'] . $text['label-name'], 'negative');
 		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
@@ -271,12 +291,19 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 		unset($_SESSION['destinations']['array']);
 	}
 
-	// set message
-	if ($action === 'add') {
-		message::add($text['message-add']);
-	} else {
-		message::add($text['message-update']);
+	$save_message = $action === 'add' ? $text['message-add'] : $text['message-update'];
+
+	if ($is_ajax_save) {
+		$redirect_url = 'dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : '');
+		ajax_save_response(true, $save_message, [
+			'dialplan_uuid' => $dialplan_uuid,
+			'app_uuid' => $app_uuid,
+			'redirect_url' => $redirect_url,
+		]);
 	}
+
+	// set message
+	message::add($save_message);
 
 	// redirect
 	header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
@@ -4091,9 +4118,122 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	}
 
 	// Form submission handling
-	document.getElementById('frm').addEventListener('submit', function(e) {
+	let saveInFlight = false;
+
+	function setSaveUiState(isSaving) {
+		saveInFlight = isSaving;
+		const saveBtn = document.getElementById('btn_save');
+		if (saveBtn) {
+			saveBtn.disabled = isSaving;
+			saveBtn.classList.toggle('disabled', isSaving);
+		}
+	}
+
+	function clearAjaxFieldErrors() {
+		const nameField = document.getElementById('dialplan_name');
+		if (nameField) {
+			nameField.setCustomValidity('');
+		}
+	}
+
+	function applyAjaxFieldErrors(fieldErrors) {
+		if (!fieldErrors || typeof fieldErrors !== 'object') return;
+		if (fieldErrors.dialplan_name) {
+			const nameField = document.getElementById('dialplan_name');
+			if (nameField) {
+				nameField.setCustomValidity(fieldErrors.dialplan_name);
+				nameField.reportValidity();
+			}
+		}
+	}
+
+	function updateUrlAfterSave(payload) {
+		if (!payload || !payload.redirect_url || !window.history || !window.history.replaceState) return;
+		window.history.replaceState({}, document.title, payload.redirect_url);
+
+		if (payload.dialplan_uuid) {
+			let idInput = document.querySelector('input[name="dialplan_uuid"]');
+			if (!idInput) {
+				idInput = document.createElement('input');
+				idInput.type = 'hidden';
+				idInput.name = 'dialplan_uuid';
+				document.getElementById('frm').appendChild(idInput);
+			}
+			idInput.value = payload.dialplan_uuid;
+		}
+	}
+
+	function ajaxSaveDialplan() {
+		const formEl = document.getElementById('frm');
+		const formData = new FormData(formEl);
+		const requestFailedMessage = <?php echo json_encode($text['message-request_failed'] ?? 'Request failed. Please try again.'); ?>;
+		const saveSuccessMessage = <?php echo json_encode($text['message-update']); ?>;
+		formData.append('ajax_action', 'save_dialplan');
+		if (!formData.get('submit')) {
+			formData.append('submit', 'save');
+		}
+
+		setSaveUiState(true);
+		notifyPopupSaveState('start');
+		clearAjaxFieldErrors();
+
+		fetch(window.location.href, {
+			method: 'POST',
+			headers: {
+				'X-Requested-With': 'XMLHttpRequest',
+				'Accept': 'application/json'
+			},
+			body: formData
+		})
+		.then(function(response) {
+			return response.text().then(function(text) {
+				let payload = null;
+				try {
+					payload = text ? JSON.parse(text) : {};
+				} catch (error) {
+					payload = {
+						success: false,
+						message: requestFailedMessage
+					};
+				}
+
+				if (!response.ok && !payload.message) {
+					payload.message = requestFailedMessage;
+				}
+
+				return payload;
+			});
+		})
+		.then(function(payload) {
+			if (payload.success) {
+				display_message(payload.message || saveSuccessMessage, 'positive', 4000);
+				recordSavedBaseline();
+				checkDirtyState();
+				resetHistory();
+				updateUrlAfterSave(payload);
+				notifyPopupSaveState('success');
+				return;
+			}
+
+			applyAjaxFieldErrors(payload.field_errors || {});
+			display_message(payload.message || requestFailedMessage, 'negative', 5000);
+			notifyPopupSaveState('failed', 'server');
+		})
+		.catch(function() {
+			display_message(requestFailedMessage, 'negative', 5000);
+			notifyPopupSaveState('failed', 'network');
+		})
+		.finally(function() {
+			setSaveUiState(false);
+			keepPopoutOpenOnUnload = false;
+		});
+	}
+
+	function trySubmitDialplan(forceSave) {
+		if (saveInFlight) return;
+
 		flushPendingHistorySnapshot();
-		keepPopoutOpenOnUnload = true;
+		keepPopoutOpenOnUnload = false;
 
 		// Always use XML from ACE editor
 		document.getElementById('dialplan_xml_hidden').value = editor.getValue();
@@ -4102,52 +4242,45 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (tree && tree.children) {
 			const validation = validateRegexConditions(tree.children);
 			if (!validation.valid) {
-				e.preventDefault();
 				notifyPopupSaveState('cancelled', 'validation');
 				alert(validation.message);
-				return false;
+				return;
 			}
 		}
 
 		// Check if confirmation needed
-		if (syncState === 'stale') {
-			e.preventDefault();
+		if (!forceSave && syncState === 'stale') {
 			notifyPopupSaveState('cancelled', 'stale');
 			modal_open('modal-save-stale', 'btn_save');
-			return false;
+			return;
 		}
 
-		if (syncState === 'error') {
-			e.preventDefault();
+		if (!forceSave && syncState === 'error') {
 			notifyPopupSaveState('cancelled', 'error');
 			modal_open('modal-save-error', 'btn_save');
-			return false;
+			return;
 		}
 
-		notifyPopupSaveState('start');
+		ajaxSaveDialplan();
+	}
 
-		recordSavedBaseline();
-		checkDirtyState();
-		return true;
+	document.getElementById('frm').addEventListener('submit', function(e) {
+		e.preventDefault();
+		trySubmitDialplan(false);
+		return false;
 	});
 
 	// Confirm save after modal
 	window.confirmSave = function() {
 		modal_close();
-		flushPendingHistorySnapshot();
-		keepPopoutOpenOnUnload = true;
-		document.getElementById('dialplan_xml_hidden').value = editor.getValue();
-		recordSavedBaseline();
-		checkDirtyState();
-		document.getElementById('frm').submit();
+		trySubmitDialplan(true);
 	};
 
 	<?php if ($is_migration): ?>
 	// Migration confirmation
 	window.confirmMigration = function() {
 		modal_close();
-		keepPopoutOpenOnUnload = true;
-		document.getElementById('frm').submit();
+		trySubmitDialplan(true);
 	};
 	<?php endif; ?>
 
