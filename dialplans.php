@@ -429,6 +429,12 @@ $original_xml_cache = [];
 $all_original_status_match = !empty($dialplans);
 if (!empty($dialplans)) {
 	foreach ($dialplans as $x => $row) {
+		// Time Condition dialplans are UI-generated and do not have baseline XML files.
+		if (($row['app_uuid'] ?? '') === '4b821450-926b-175a-af93-a03c441818b1') {
+			$dialplans[$x]['original_xml_status'] = 'missing';
+			continue;
+		}
+
 		$original_file = dialplan_find_original_file($row['dialplan_order'], $row['dialplan_name'], $original_file_map);
 		$dialplans[$x]['original_xml_status'] = 'missing';
 
