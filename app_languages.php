@@ -1,11 +1,11 @@
 <?php
 
 // unified editor language strings
-$text['label-unified_editor']['en-us'] = "Visual Editor";
-$text['label-unified_editor']['en-gb'] = "Visual Editor";
+$text['label-unified_editor']['en-us'] = "Enhanced editor";
+$text['label-unified_editor']['en-gb'] = "Enhanced editor";
 
-$text['label-visual_editor']['en-us'] = "Visual Editor";
-$text['label-visual_editor']['en-gb'] = "Visual Editor";
+$text['label-visual_editor']['en-us'] = "Enhanced editor";
+$text['label-visual_editor']['en-gb'] = "Enhanced editor";
 
 $text['label-xml']['en-us'] = "XML";
 $text['label-xml']['en-gb'] = "XML";
@@ -55,14 +55,14 @@ $text['message-migration_warning']['en-gb'] = "This dialplan will be migrated to
 $text['message-migration_confirm']['en-us'] = "This will migrate the dialplan to the unified editor. XML will become the only source. Continue?";
 $text['message-migration_confirm']['en-gb'] = "This will migrate the dialplan to the unified editor. XML will become the only source. Continue?";
 
-$text['message-save_stale']['en-us'] = "Visual editor is not synced with XML. Save anyway?";
-$text['message-save_stale']['en-gb'] = "Visual editor is not synced with XML. Save anyway?";
+$text['message-save_stale']['en-us'] = "Enhanced editor is not synced with XML. Save anyway?";
+$text['message-save_stale']['en-gb'] = "Enhanced editor is not synced with XML. Save anyway?";
 
 $text['message-save_error']['en-us'] = "XML has parse errors. Saving may result in a broken dialplan. Save anyway?";
 $text['message-save_error']['en-gb'] = "XML has parse errors. Saving may result in a broken dialplan. Save anyway?";
 
-$text['message-unified_editor_available']['en-us'] = "A new visual editor is available with side-by-side XML preview and nested condition support.";
-$text['message-unified_editor_available']['en-gb'] = "A new visual editor is available with side-by-side XML preview and nested condition support.";
+$text['message-unified_editor_available']['en-us'] = "A new enhanced editor is available with side-by-side XML preview and nested condition support.";
+$text['message-unified_editor_available']['en-gb'] = "A new enhanced editor is available with side-by-side XML preview and nested condition support.";
 
 $text['message-invalid_xml']['en-us'] = "XML contains invalid or dangerous content.";
 $text['message-invalid_xml']['en-gb'] = "XML contains invalid or dangerous content.";
@@ -70,8 +70,8 @@ $text['message-invalid_xml']['en-gb'] = "XML contains invalid or dangerous conte
 $text['message-restore_confirm']['en-us'] = "Restore the original XML for this dialplan? This will overwrite current XML changes.";
 $text['message-restore_confirm']['en-gb'] = "Restore the original XML for this dialplan? This will overwrite current XML changes.";
 
-$text['description-dialplan-edit-unified']['en-us'] = "Edit the dialplan using the visual editor. Changes to the visual editor update the XML immediately. To apply XML changes to the visual editor, click Visualize.";
-$text['description-dialplan-edit-unified']['en-gb'] = "Edit the dialplan using the visual editor. Changes to the visual editor update the XML immediately. To apply XML changes to the visual editor, click Visualize.";
+$text['description-dialplan-edit-unified']['en-us'] = "Edit the dialplan using the enhanced editor. Changes to the enhanced editor update the XML immediately. To apply XML changes to the enhanced editor, click Visualize.";
+$text['description-dialplan-edit-unified']['en-gb'] = "Edit the dialplan using the enhanced editor. Changes to the enhanced editor update the XML immediately. To apply XML changes to the enhanced editor, click Visualize.";
 
 $text['label-drag_to_reorder']['en-us'] = "Drag to reorder or nest inside conditions";
 $text['label-drag_to_reorder']['en-gb'] = "Drag to reorder or nest inside conditions";

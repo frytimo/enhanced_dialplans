@@ -1712,6 +1712,7 @@ body.drag-active .drop-zone {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	position: relative;
 	padding: 8px 12px;
 	cursor: pointer;
 	user-select: none;
@@ -1744,6 +1745,9 @@ body.drag-active .drop-zone {
 }
 
 .properties-header .toggle-icon {
+	margin-left: auto;
+	position: relative;
+	z-index: 2;
 	transition: transform 0.2s ease;
 }
 
@@ -1755,7 +1759,13 @@ body.drag-active .drop-zone {
 	display: flex;
 	gap: 6px;
 	align-items: center;
-	margin-right: auto;
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	margin-right: 0;
+	max-width: 45%;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
 .properties-tags.hidden {
