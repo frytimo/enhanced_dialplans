@@ -123,7 +123,7 @@ if (!class_exists('url')) {
 $url = url::from_request($settings);
 
 // add multi-lingual support
-$text = new text()->get();
+$text = (new text())->get();
 
 // drop app uuid from the query if not from specific apps
 $allowed_app_uuids = [
