@@ -427,10 +427,35 @@ $original_dialplan_directory = dirname(__DIR__) . "/dialplans/resources/switch/c
 $original_file_map = dialplan_build_original_file_map($original_dialplan_directory);
 $original_xml_cache = [];
 $all_original_status_match = !empty($dialplans);
+
+// UI-managed dialplan apps do not use static baseline XML files.
+$original_compare_excluded_app_uuids = [
+	'a6a7c4c5-340a-43ce-bcbc-2ed9bab8659d', // bridges
+	'9ed63276-e085-4897-839c-4f2e36d92d6c', // call block
+	'efc11f6b-ed73-9955-4d4d-3a1bed75a056', // call broadcast
+	'95788e50-9500-079e-2807-fd530b0ea370', // call centers
+	'4a085c51-7635-ff03-f67b-86e834422848', // call detail records (xml cdr)
+	'b1b70f85-6b42-429b-8c5a-60c8b02b7d14', // call flows
+	'19806921-e8ed-dcff-b325-dd3e5da4959d', // call forward
+	'56165644-598d-4ed8-be01-d960bcb8ffed', // call recordings
+	'8d083f5a-f726-42a8-9ffa-8d28f848f10e', // conference centers
+	'e1ad84a2-79e1-450c-a5b1-7507a043e048', // conference controls
+	'c33e2c2a-847f-44c1-8c0d-310df5d65ba9', // conference profiles
+	'b81412e8-7253-91f4-e48e-42fc2c9a38d9', // conferences
+	'24108154-4ac3-1db6-1551-4731703a4440', // fax
+	'a5788e9b-58bc-bd1b-df59-fff5d51253ab', // ivr menus
+	'f5210fba-337d-4e05-86b6-7a2fd9dc7c42', // follow me
+	'5c6f597c-9b78-11e4-89d3-123b93f75cba', // phrases
+	'16589224-c876-aeb3-f59f-523a1c0801f7', // queues (fifo)
+	'83913217-c7a2-9e90-925d-a866eb40b60e', // recordings
+	'1d61fb65-1eec-bc73-a6ee-a6203b4fe6f2', // ring groups
+	'4b821450-926b-175a-af93-a03c441818b1', // time conditions
+	'b523c2d2-64cd-46f1-9520-ca4b4098e044', // voicemails
+];
+
 if (!empty($dialplans)) {
 	foreach ($dialplans as $x => $row) {
-		// Time Condition dialplans are UI-generated and do not have baseline XML files.
-		if (($row['app_uuid'] ?? '') === '4b821450-926b-175a-af93-a03c441818b1') {
+		if (in_array(($row['app_uuid'] ?? ''), $original_compare_excluded_app_uuids, true)) {
 			$dialplans[$x]['original_xml_status'] = 'missing';
 			continue;
 		}
@@ -717,7 +742,9 @@ $th_number      = th_order_by('dialplan_number', $text['label-number'], $order_b
 $th_context_col = th_order_by('dialplan_context', $text['label-context'], $order_by, $order, $app_uuid, null, $sort_param_str);
 $th_order_col   = th_order_by('dialplan_order', $text['label-order'], $order_by, $order, $app_uuid, "class='center shrink'", $sort_param_str);
 $th_original_col = "<th class='center shrink' style='width: 1%; white-space: nowrap; padding-left: 4px; padding-right: 4px;'>".
-	($all_original_status_match ? "<span title='All rows match most recent version' style='color: #16a34a;'><i class='fas fa-check-circle' aria-hidden='true'></i></span>" : '&nbsp;').
+	($all_original_status_match
+		? "<span title='All rows match most recent version' style='color: #16a34a;'><i class='fas fa-check-circle' aria-hidden='true'></i></span>"
+		: "<span title='One or more rows do not match most recent version' style='color: #b45309;'><i class='fas fa-exclamation-triangle' aria-hidden='true'></i></span>").
 "</th>";
 $th_enabled     = th_order_by('dialplan_enabled', $text['label-enabled'], $order_by, $order, $app_uuid, "class='center'", $sort_param_str);
 $th_description = th_order_by('dialplan_description', $text['label-description'], $order_by, $order, $app_uuid, "class='hide-sm-dn' style='min-width: 100px;'", $sort_param_str);
