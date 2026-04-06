@@ -102,6 +102,63 @@ if (!empty($_REQUEST['app_uuid']) && is_uuid($_REQUEST['app_uuid'])) {
 // set the action
 $action = !empty($dialplan_uuid) ? 'update' : 'add';
 
+function dialplan_normalize_name($name): string {
+	return preg_replace('/[^a-z0-9]/', '', strtolower((string) $name));
+}
+
+function dialplan_find_original_file_path($base_directory, $dialplan_order, $dialplan_name): ?string {
+	$base_directory = rtrim($base_directory, '/');
+	$order = (int) $dialplan_order;
+	$prefixes = array_values(array_unique([
+		(string) $order,
+		sprintf('%03d', $order),
+		sprintf('%02d', $order),
+	]));
+
+	$paths = [];
+	foreach ($prefixes as $prefix) {
+		$matches = glob($base_directory.'/'.$prefix.'_*.xml') ?: [];
+		if (!empty($matches)) {
+			$paths = array_merge($paths, $matches);
+		}
+	}
+	$paths = array_values(array_unique($paths));
+	if (empty($paths)) {
+		return null;
+	}
+
+	if (count($paths) === 1) {
+		return $paths[0];
+	}
+
+	$name_normalized = dialplan_normalize_name($dialplan_name);
+	if ($name_normalized === '') {
+		return $paths[0];
+	}
+
+	foreach ($paths as $path) {
+		$filename = basename($path);
+		if (preg_match('/^\d+_([^\.]+)\.xml$/', $filename, $matches)) {
+			$file_name_normalized = dialplan_normalize_name($matches[1]);
+			if ($file_name_normalized === $name_normalized) {
+				return $path;
+			}
+		}
+	}
+
+	foreach ($paths as $path) {
+		$filename = basename($path);
+		if (preg_match('/^\d+_([^\.]+)\.xml$/', $filename, $matches)) {
+			$file_name_normalized = dialplan_normalize_name($matches[1]);
+			if (strpos($file_name_normalized, $name_normalized) !== false || strpos($name_normalized, $file_name_normalized) !== false) {
+				return $path;
+			}
+		}
+	}
+
+	return $paths[0];
+}
+
 function ajax_save_response($success, $message, $extra = [], $http_status = 200) {
 	http_response_code($http_status);
 	header('Content-Type: application/json');
@@ -154,6 +211,74 @@ if (!empty($_POST['ajax_action']) && $_POST['ajax_action'] === 'save_xml_visibil
 }
 
 // process the HTTP POST for saving
+if (
+	(!empty($_POST['submit']) && $_POST['submit'] === 'restore_original') ||
+	(!empty($_POST['action_request']) && $_POST['action_request'] === 'restore_original')
+) {
+	// validate the token
+	$token = new token;
+	if (!$token->validate($_SERVER['PHP_SELF'])) {
+		message::add($text['message-invalid_token'], 'negative');
+		header($url->set_path('dialplans.php')->to_location_header());
+		exit;
+	}
+
+	if (empty($dialplan_uuid) || !is_uuid($dialplan_uuid)) {
+		message::add('Unable to restore original XML: invalid dialplan id.', 'negative');
+		header('Location: dialplans.php');
+		exit;
+	}
+
+	$sql = "select dialplan_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
+	$sql .= "where dialplan_uuid = :dialplan_uuid ";
+	$sql .= "and (domain_uuid = :domain_uuid ";
+	if (permission_exists('dialplan_global')) {
+		$sql .= "or domain_uuid is null ";
+	}
+	$sql .= ") ";
+	$parameters['dialplan_uuid'] = $dialplan_uuid;
+	$parameters['domain_uuid'] = $domain_uuid;
+	$row = $database->select($sql, $parameters, 'row');
+	unset($sql, $parameters);
+
+	if (!is_array($row) || @sizeof($row) == 0) {
+		message::add('Unable to restore original XML: dialplan not found.', 'negative');
+		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		exit;
+	}
+
+	$original_directory = dirname(__DIR__) . '/dialplans/resources/switch/conf/dialplan';
+	$original_file = dialplan_find_original_file_path($original_directory, $row['dialplan_order'], $row['dialplan_name']);
+	if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
+		message::add('Unable to restore original XML: matching original file not found.', 'negative');
+		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		exit;
+	}
+
+	$original_xml = file_get_contents($original_file);
+	if ($original_xml === false) {
+		message::add('Unable to restore original XML: failed to read original file.', 'negative');
+		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		exit;
+	}
+
+	$array['dialplans'][0]['dialplan_uuid'] = $row['dialplan_uuid'];
+	$array['dialplans'][0]['dialplan_xml'] = $original_xml;
+	$database->save($array);
+	unset($array);
+
+	$cache = new cache;
+	$dialplan_context_to_clear = $row['dialplan_context'];
+	if ($dialplan_context_to_clear == "\${domain_name}" || $dialplan_context_to_clear == "global") {
+		$dialplan_context_to_clear = "*";
+	}
+	$cache->delete("dialplan:" . $dialplan_context_to_clear);
+
+	message::add('Restored original XML for this dialplan.');
+	header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+	exit;
+}
+
 if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 	$is_ajax_save = !empty($_POST['ajax_action']) && $_POST['ajax_action'] === 'save_dialplan';
 	$field_errors = [];
@@ -1330,6 +1455,14 @@ require_once "resources/header.php";
 	border-color: #888;
 }
 
+/* Keep add-node labels/icons high-contrast on tinted backgrounds. */
+.add-node-btn,
+.add-node-btn:hover,
+.add-node-btn i,
+.add-node-btn:hover i {
+	color: #000 !important;
+}
+
 /* Lint badge — small severity indicator attached to each node */
 .node-lint-badge {
 	display: inline-flex;
@@ -1646,6 +1779,9 @@ require_once "resources/header.php";
 	<div class="actions">
 		<?php
 		echo button::create(['type' => 'button', 'label' => $text['button-back'], 'icon' => $settings->get('theme', 'button_icon_back'), 'id' => 'btn_back', 'link' => $url->set_path('/app/visual_dialplans/dialplans.php')->unset_query_param('id')->build_absolute()]);
+		if ($action === 'update') {
+			echo button::create(['type' => 'submit', 'label' => $text['button-restore'] ?? 'Restore', 'icon' => ($settings->get('theme', 'button_icon_reset') ?: 'undo'), 'id' => 'btn_restore', 'name' => 'submit', 'value' => 'restore_original', 'style' => 'margin-left: 15px;']);
+		}
 		?>
 
 		<!-- Save Status Indicator -->
@@ -1898,6 +2034,7 @@ require_once "resources/header.php";
 
 <!-- Hidden field for XML content -->
 <input type="hidden" name="dialplan_xml" id="dialplan_xml_hidden" value="">
+<input type="hidden" name="action_request" id="action_request" value="">
 <input type="hidden" name="app_uuid" value="<?php echo escape($app_uuid); ?>">
 <?php if ($action === 'update'): ?>
 <input type="hidden" name="dialplan_uuid" value="<?php echo escape($dialplan_uuid); ?>">
@@ -1930,6 +2067,14 @@ require_once "resources/header.php";
 	'type' => 'general',
 	'message' => $text['message-save_error'] ?? 'XML has parse errors. Saving may result in a broken dialplan. Save anyway?',
 	'actions' => button::create(['type' => 'button', 'label' => $text['button-save'], 'icon' => 'check', 'style' => 'float: right; margin-left: 15px;', 'onclick' => 'confirmSave();'])
+]); ?>
+
+<!-- Restore Confirmation Modal -->
+<?php echo modal::create([
+	'id' => 'modal-restore-original',
+	'type' => 'general',
+	'message' => ($text['message-restore_confirm'] ?? 'Restore the original XML for this dialplan? This will overwrite current XML changes.'),
+	'actions' => button::create(['type' => 'button', 'label' => $text['button-continue'], 'icon' => 'check', 'style' => 'float: right; margin-left: 15px;', 'onclick' => 'confirmRestoreOriginal();'])
 ]); ?>
 
 <?php
@@ -4251,6 +4396,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 	// Form submission handling
 	let saveInFlight = false;
+	let bypassUnloadGuard = false;
 
 	function setSaveUiState(isSaving) {
 		saveInFlight = isSaving;
@@ -4397,6 +4543,13 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	}
 
 	document.getElementById('frm').addEventListener('submit', function(e) {
+		const submitter = e.submitter || document.activeElement;
+		if (submitter && submitter.id === 'btn_restore') {
+			e.preventDefault();
+			modal_open('modal-restore-original', 'btn_restore');
+			return false;
+		}
+
 		e.preventDefault();
 		trySubmitDialplan(false);
 		return false;
@@ -4406,6 +4559,15 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	window.confirmSave = function() {
 		modal_close();
 		trySubmitDialplan(true);
+	};
+
+	window.confirmRestoreOriginal = function() {
+		modal_close();
+		const form = document.getElementById('frm');
+		document.getElementById('action_request').value = 'restore_original';
+		bypassUnloadGuard = true;
+		keepPopoutOpenOnUnload = false;
+		HTMLFormElement.prototype.submit.call(form);
 	};
 
 	<?php if ($is_migration): ?>
@@ -4439,6 +4601,10 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	// Unsaved changes warning.
 	// Keep popup open when this page unloads due to save/submit, otherwise close it.
 	window.addEventListener('beforeunload', function(e) {
+		if (bypassUnloadGuard) {
+			return;
+		}
+
 		if (!keepPopoutOpenOnUnload && xmlPopoutWindow && !xmlPopoutWindow.closed) {
 			try { xmlPopoutWindow.close(); } catch (_) {}
 			if (xmlChannel) { xmlChannel.close(); xmlChannel = null; }

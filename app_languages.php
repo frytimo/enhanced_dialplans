@@ -67,6 +67,9 @@ $text['message-unified_editor_available']['en-gb'] = "A new visual editor is ava
 $text['message-invalid_xml']['en-us'] = "XML contains invalid or dangerous content.";
 $text['message-invalid_xml']['en-gb'] = "XML contains invalid or dangerous content.";
 
+$text['message-restore_confirm']['en-us'] = "Restore the original XML for this dialplan? This will overwrite current XML changes.";
+$text['message-restore_confirm']['en-gb'] = "Restore the original XML for this dialplan? This will overwrite current XML changes.";
+
 $text['description-dialplan-edit-unified']['en-us'] = "Edit the dialplan using the visual editor. Changes to the visual editor update the XML immediately. To apply XML changes to the visual editor, click Visualize.";
 $text['description-dialplan-edit-unified']['en-gb'] = "Edit the dialplan using the visual editor. Changes to the visual editor update the XML immediately. To apply XML changes to the visual editor, click Visualize.";
 

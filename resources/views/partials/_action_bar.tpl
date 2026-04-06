@@ -5,6 +5,7 @@
 		{$btn_copy}
 		{$btn_toggle}
 		{$btn_delete}
+		{$btn_restore}
 		{$btn_xml}
 		<form id='form_search' class='inline' method='get'>
 			{if $has_dialplan_all}

@@ -36,6 +36,63 @@ if (!(permission_exists('dialplan_view') || permission_exists('inbound_route_vie
 	echo "access denied";
 	exit;
 }
+
+function dialplan_normalize_name($name): string {
+	return preg_replace('/[^a-z0-9]/', '', strtolower((string) $name));
+}
+
+function dialplan_normalize_xml($xml): string {
+	$xml = str_replace(["\r\n", "\r"], "\n", (string) $xml);
+	$xml = preg_replace('/^\xEF\xBB\xBF/', '', $xml);
+	$xml = preg_replace('/>\s+</', '><', $xml);
+	return trim($xml);
+}
+
+function dialplan_build_original_file_map($dialplan_directory): array {
+	$file_map = [];
+	$paths = glob($dialplan_directory . '/*.xml') ?: [];
+	foreach ($paths as $path) {
+		$filename = basename($path);
+		if (preg_match('/^(\d+)_([^\.]+)\.xml$/', $filename, $matches)) {
+			$order = (int) $matches[1];
+			$file_map[$order][] = [
+				'path' => $path,
+				'name' => $matches[2],
+				'name_normalized' => dialplan_normalize_name($matches[2]),
+			];
+		}
+	}
+	return $file_map;
+}
+
+function dialplan_find_original_file($dialplan_order, $dialplan_name, $file_map): ?string {
+	$order = (int) $dialplan_order;
+	if (empty($file_map[$order]) || !is_array($file_map[$order])) {
+		return null;
+	}
+
+	$candidates = $file_map[$order];
+	if (count($candidates) === 1) {
+		return $candidates[0]['path'];
+	}
+
+	$name_normalized = dialplan_normalize_name($dialplan_name);
+	if ($name_normalized !== '') {
+		foreach ($candidates as $candidate) {
+			if ($candidate['name_normalized'] === $name_normalized) {
+				return $candidate['path'];
+			}
+		}
+		foreach ($candidates as $candidate) {
+			if (strpos($candidate['name_normalized'], $name_normalized) !== false || strpos($name_normalized, $candidate['name_normalized']) !== false) {
+				return $candidate['path'];
+			}
+		}
+	}
+
+	return $candidates[0]['path'];
+}
+
 $has_dialplan_add          = permission_exists('dialplan_add');
 $has_dialplan_all          = permission_exists('dialplan_all');
 $has_dialplan_context      = permission_exists('dialplan_context');
@@ -102,6 +159,14 @@ $search    = $url->get('search', '');
 $show      = $url->get('show', '');
 $app_uuid  = $url->get('app_uuid', '');
 
+$has_restore_action = (
+	($app_uuid == "c03b422e-13a8-bd1b-e42b-b6b9b4d27ce4" && $has_inbound_route_edit) ||
+	($app_uuid == "8c914ec3-9fc0-8ab5-4cda-6c9288bdc9a3" && $has_outbound_route_edit) ||
+	($app_uuid == "16589224-c876-aeb3-f59f-523a1c0801f7" && $has_fifo_edit) ||
+	($app_uuid == "4b821450-926b-175a-af93-a03c441818b1" && $has_time_condition_edit) ||
+	$has_dialplan_edit
+);
+
 // process the http post data by action
 if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 	// process action
@@ -116,6 +181,77 @@ if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 			if ($has_dialplan_edit) {
 				$obj = new dialplan;
 				$obj->toggle($dialplans);
+			}
+			break;
+		case 'restore_original':
+			if ($has_restore_action) {
+				$dialplan_directory = dirname(__DIR__) . "/dialplans/resources/switch/conf/dialplan";
+				$file_map = dialplan_build_original_file_map($dialplan_directory);
+				$restored_contexts = [];
+				$restored_count = 0;
+
+				foreach ($dialplans as $dialplan) {
+					if (empty($dialplan['checked'])) {
+						continue;
+					}
+					if (empty($dialplan['uuid']) || !is_uuid($dialplan['uuid'])) {
+						continue;
+					}
+
+					$sql = "select dialplan_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
+					$sql .= "where dialplan_uuid = :dialplan_uuid ";
+					$sql .= "and (domain_uuid = :domain_uuid ";
+					if ($has_dialplan_global) {
+						$sql .= "or domain_uuid is null ";
+					}
+					$sql .= ") ";
+					$parameters = [];
+					$parameters['dialplan_uuid'] = $dialplan['uuid'];
+					$parameters['domain_uuid'] = $domain_uuid;
+					$row = $database->select($sql, $parameters, 'row');
+					unset($sql, $parameters);
+
+					if (!is_array($row) || @sizeof($row) == 0) {
+						continue;
+					}
+
+					$original_file = dialplan_find_original_file($row['dialplan_order'], $row['dialplan_name'], $file_map);
+					if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
+						continue;
+					}
+
+					$original_xml = file_get_contents($original_file);
+					if ($original_xml === false) {
+						continue;
+					}
+
+					$array['dialplans'][] = [
+						'dialplan_uuid' => $row['dialplan_uuid'],
+						'dialplan_xml' => $original_xml,
+					];
+					$restored_contexts[] = $row['dialplan_context'];
+					$restored_count++;
+				}
+
+				if (!empty($array['dialplans'])) {
+					$database->save($array);
+					unset($array);
+
+					$cache = new cache;
+					foreach (array_unique($restored_contexts) as $restored_context) {
+						if ($restored_context == "\${domain_name}" || $restored_context == "global") {
+							$restored_context = "*";
+						}
+						$cache->delete("dialplan:" . $restored_context);
+					}
+				}
+
+				if ($restored_count > 0) {
+					message::add('Restored ' . $restored_count . ' dialplan XML ' . ($restored_count == 1 ? 'entry' : 'entries') . ' from original files.');
+				}
+				else {
+					message::add('No matching original XML file was found for the selected dialplan entries.', 'negative');
+				}
 			}
 			break;
 		case 'delete':
@@ -286,6 +422,34 @@ $sql      .= limit_offset($rows_per_page, $offset);
 $dialplans = $database->select($sql, $parameters ?? null, 'all');
 unset($sql, $parameters);
 
+// compare current dialplans with original app XML files
+$original_dialplan_directory = dirname(__DIR__) . "/dialplans/resources/switch/conf/dialplan";
+$original_file_map = dialplan_build_original_file_map($original_dialplan_directory);
+$original_xml_cache = [];
+$all_original_status_match = !empty($dialplans);
+if (!empty($dialplans)) {
+	foreach ($dialplans as $x => $row) {
+		$original_file = dialplan_find_original_file($row['dialplan_order'], $row['dialplan_name'], $original_file_map);
+		$dialplans[$x]['original_xml_status'] = 'missing';
+
+		if (!empty($original_file) && is_file($original_file) && is_readable($original_file)) {
+			if (!isset($original_xml_cache[$original_file])) {
+				$original_xml_cache[$original_file] = file_get_contents($original_file);
+			}
+			if ($original_xml_cache[$original_file] !== false) {
+				$original_xml = dialplan_normalize_xml($original_xml_cache[$original_file]);
+				$current_xml = dialplan_normalize_xml($row['dialplan_xml'] ?? '');
+				$dialplans[$x]['original_xml_status'] = ($original_xml === $current_xml) ? 'match' : 'diff';
+			}
+		}
+
+		// N/A ('missing') counts as match for the header-state indicator.
+		if ($dialplans[$x]['original_xml_status'] === 'diff') {
+			$all_original_status_match = false;
+		}
+	}
+}
+
 // get the list of all dialplan contexts
 $sql  = "select dc.* from ( ";
 $sql .= "select distinct dialplan_context from v_dialplans ";
@@ -434,6 +598,19 @@ $btn_delete = '';
 if (!empty($dialplans) && $has_show_delete) {
 	$btn_delete = button::create(['type' => 'button', 'label' => $text['button-delete'], 'icon' => $button_icon_delete, 'id' => 'btn_delete', 'name' => 'btn_delete', 'style' => 'display: none;', 'onclick' => "modal_open('modal-delete','btn_delete');"]);
 }
+$btn_restore = '';
+if (!empty($dialplans) && $has_show_toggle) {
+	$btn_restore = button::create([
+		'type' => 'button',
+		'label' => 'Restore',
+		'icon' => ($button_icon_reset !== '' ? $button_icon_reset : 'undo'),
+		'id' => 'btn_restore',
+		'name' => 'btn_restore',
+		'class' => '+revealed',
+		'style' => 'display: none;',
+		'onclick' => "list_action_set('restore_original'); list_form_submit('form_list');",
+	]);
+}
 $btn_xml = '';
 if ($has_dialplan_xml) {
 	$xml_link = PROJECT_PATH . '/app/visual_dialplans/dialplan_xml.php';
@@ -533,6 +710,9 @@ $th_name        = th_order_by('dialplan_name', $text['label-name'], $order_by, $
 $th_number      = th_order_by('dialplan_number', $text['label-number'], $order_by, $order, $app_uuid, null, $sort_param_str);
 $th_context_col = th_order_by('dialplan_context', $text['label-context'], $order_by, $order, $app_uuid, null, $sort_param_str);
 $th_order_col   = th_order_by('dialplan_order', $text['label-order'], $order_by, $order, $app_uuid, "class='center shrink'", $sort_param_str);
+$th_original_col = "<th class='center shrink' style='width: 1%; white-space: nowrap; padding-left: 4px; padding-right: 4px;'>".
+	($all_original_status_match ? "<span title='All rows match most recent version' style='color: #16a34a;'><i class='fas fa-check-circle' aria-hidden='true'></i></span>" : '&nbsp;').
+"</th>";
 $th_enabled     = th_order_by('dialplan_enabled', $text['label-enabled'], $order_by, $order, $app_uuid, "class='center'", $sort_param_str);
 $th_description = th_order_by('dialplan_description', $text['label-description'], $order_by, $order, $app_uuid, "class='hide-sm-dn' style='min-width: 100px;'", $sort_param_str);
 unset($sort_param_str);
@@ -579,6 +759,18 @@ foreach ($dialplans as &$row) {
 		($row['app_uuid'] == "4b821450-926b-175a-af93-a03c441818b1" && $has_time_condition_edit)
 	);
 	$row['_has_toggle']    = $has_row_toggle;
+	$row['_original_status'] = $row['original_xml_status'] ?? 'missing';
+	$row['_restore_button'] = '';
+	if ($row['_original_status'] === 'diff' && $has_row_toggle) {
+		$row['_restore_button'] = button::create([
+			'type' => 'submit',
+			'class' => 'link',
+			'icon' => 'exclamation-triangle',
+			'title' => 'Mismatch detected. Click to restore.',
+			'style' => 'color: #b45309; padding: 0; min-width: 0; margin: 0;',
+			'onclick' => "list_self_check('checkbox_" . $x . "'); list_action_set('restore_original'); list_form_submit('form_list')",
+		]);
+	}
 	$row['_toggle_button'] = '';
 	if ($has_row_toggle) {
 		$row['_toggle_button'] = button::create(['type' => 'submit', 'class' => 'link', 'label' => $text['label-' . ($row['dialplan_enabled'] ? 'true' : 'false')], 'title' => $text['button-toggle'], 'onclick' => "list_self_check('checkbox_" . $x . "'); list_action_set('toggle'); list_form_submit('form_list')"]);
@@ -627,6 +819,7 @@ $template->assign('btn_add', $btn_add);
 $template->assign('btn_copy', $btn_copy);
 $template->assign('btn_toggle', $btn_toggle);
 $template->assign('btn_delete', $btn_delete);
+$template->assign('btn_restore', $btn_restore);
 $template->assign('btn_xml', $btn_xml);
 $template->assign('btn_show_all', $btn_show_all);
 $template->assign('btn_search', $btn_search);
@@ -639,6 +832,7 @@ $template->assign('th_name', $th_name);
 $template->assign('th_number', $th_number);
 $template->assign('th_context_col', $th_context_col);
 $template->assign('th_order_col', $th_order_col);
+$template->assign('th_original_col', $th_original_col);
 $template->assign('th_enabled', $th_enabled);
 $template->assign('th_description', $th_description);
 
