@@ -419,6 +419,26 @@ $node_color_regex_hover = $settings->get('dialplan', 'node_color_regex_hover', '
 $node_color_comment = $settings->get('dialplan', 'node_color_comment', '#000000');
 $node_color_comment_hover = $settings->get('dialplan', 'node_color_comment_hover', '#111111');
 
+function dialplan_hex_to_rgba($hex, $alpha) {
+	$hex = ltrim((string) $hex, '#');
+	if (strlen($hex) === 3) {
+		$hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+	}
+	if (strlen($hex) !== 6) {
+		return 'rgba(0, 0, 0, '.((float) $alpha).')';
+	}
+	$r = hexdec(substr($hex, 0, 2));
+	$g = hexdec(substr($hex, 2, 2));
+	$b = hexdec(substr($hex, 4, 2));
+	return 'rgba('.$r.', '.$g.', '.$b.', '.((float) $alpha).')';
+}
+
+$node_color_condition_soft = dialplan_hex_to_rgba($node_color_condition, 0.12);
+$node_color_action_soft = dialplan_hex_to_rgba($node_color_action, 0.12);
+$node_color_anti_action_soft = dialplan_hex_to_rgba($node_color_anti_action, 0.12);
+$node_color_regex_soft = dialplan_hex_to_rgba($node_color_regex, 0.12);
+$node_color_comment_soft = 'rgba(160, 160, 160, 0.12)';
+
 // toggle switch colors (for theming)
 $toggle_color_enabled = $settings->get('dialplan', 'toggle_color_enabled', '#2e82d0');
 $toggle_color_disabled = $settings->get('dialplan', 'toggle_color_disabled', '#cccccc');
@@ -433,6 +453,9 @@ require_once "resources/header.php";
 <style>
 :root {
 	--dialplan-editor-breakpoint: 1024px;
+	--dialplan-node-spacing-y: 8px;
+	--dialplan-node-gap: 10px;
+	--dialplan-node-radius: 6px;
 }
 
 .dialplan-editor-container {
@@ -441,9 +464,10 @@ require_once "resources/header.php";
 }
 
 .dialplan-visual-panel {
-	width: 100%;
+	width: min(100%, 1120px);
 	position: relative;
 	padding: 10px;
+	margin: 0 auto;
 	isolation: isolate;
 }
 
@@ -610,16 +634,16 @@ require_once "resources/header.php";
 
 /* Visual tree nodes - compact layout */
 .dialplan-node {
-	margin: 4px 0;
-	padding: 6px 8px 6px 32px;
+	margin: var(--dialplan-node-spacing-y) 0;
+	padding: 10px 12px 10px 30px;
 	border: 1px solid var(--border-color, #ddd);
-	border-radius: 4px;
+	border-radius: var(--dialplan-node-radius);
 	background: var(--card-background-color, #fff);
 	position: relative;
-	min-height: 36px;
+	min-height: 40px;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: var(--dialplan-node-gap);
 }
 
 .dialplan-node.extension {
@@ -637,7 +661,9 @@ require_once "resources/header.php";
 
 /* Give comment rows extra height so the side label can fit comfortably. */
 .dialplan-node.comment {
-	min-height: 52px;
+	background: #f5f5f5;
+	border-color: #e1e1e1;
+	min-height: 56px;
 }
 
 /* Left border drag zone with rotated label - base styling */
@@ -646,130 +672,89 @@ require_once "resources/header.php";
 	left: 0;
 	top: 0;
 	bottom: 0;
-	width: 28px;
+	width: 22px;
 	cursor: grab;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	user-select: none;
-	border-radius: 3px 0 0 3px;
-	background: linear-gradient(to bottom,
-		<?php echo $button_background_color ?? '#4f4f4f'; ?>,
-		<?php echo $button_background_color_bottom ?? '#000000'; ?>
-	);
+	border-radius: var(--dialplan-node-radius) 0 0 var(--dialplan-node-radius);
+	background: <?php echo $button_background_color ?? '#4f4f4f'; ?>;
 	border: <?php echo $button_border_size ?? '1px'; ?> solid <?php echo $button_border_color ?? '#242424'; ?>;
-	border-right: none;
+	border-right: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 .dialplan-node-drag-zone:hover {
-	background: linear-gradient(to bottom,
-		<?php echo $button_background_color_hover ?? '#000000'; ?>,
-		<?php echo $button_background_color_bottom_hover ?? '#000000'; ?>
-	);
+	background: <?php echo $button_background_color_hover ?? '#000000'; ?>;
 	border-color: <?php echo $button_border_color_hover ?? '#000000'; ?>;
 }
 
 /* Node type specific colors */
 .dialplan-node-drag-zone.type-condition {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_condition; ?>,
-		<?php echo $node_color_condition; ?>cc
-	);
+	background: <?php echo $node_color_condition; ?>;
 	border-color: <?php echo $node_color_condition; ?>;
 }
 
 .dialplan-node-drag-zone.type-condition:hover {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_condition_hover; ?>,
-		<?php echo $node_color_condition_hover; ?>cc
-	);
+	background: <?php echo $node_color_condition_hover; ?>;
 	border-color: <?php echo $node_color_condition_hover; ?>;
 }
 
 .dialplan-node-drag-zone.type-action {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_action; ?>,
-		<?php echo $node_color_action; ?>cc
-	);
+	background: <?php echo $node_color_action; ?>;
 	border-color: <?php echo $node_color_action; ?>;
 }
 
 .dialplan-node-drag-zone.type-action:hover {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_action_hover; ?>,
-		<?php echo $node_color_action_hover; ?>cc
-	);
+	background: <?php echo $node_color_action_hover; ?>;
 	border-color: <?php echo $node_color_action_hover; ?>;
 }
 
 .dialplan-node-drag-zone.type-anti-action {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_anti_action; ?>,
-		<?php echo $node_color_anti_action; ?>cc
-	);
+	background: <?php echo $node_color_anti_action; ?>;
 	border-color: <?php echo $node_color_anti_action; ?>;
 }
 
 .dialplan-node-drag-zone.type-anti-action:hover {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_anti_action_hover; ?>,
-		<?php echo $node_color_anti_action_hover; ?>cc
-	);
+	background: <?php echo $node_color_anti_action_hover; ?>;
 	border-color: <?php echo $node_color_anti_action_hover; ?>;
 }
 
 .dialplan-node-drag-zone.type-regex {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_regex; ?>,
-		<?php echo $node_color_regex; ?>cc
-	);
+	background: <?php echo $node_color_regex; ?>;
 	border-color: <?php echo $node_color_regex; ?>;
 }
 
 .dialplan-node-drag-zone.type-regex:hover {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_regex_hover; ?>,
-		<?php echo $node_color_regex_hover; ?>cc
-	);
+	background: <?php echo $node_color_regex_hover; ?>;
 	border-color: <?php echo $node_color_regex_hover; ?>;
 }
 
 .dialplan-node-drag-zone.type-comment {
-	background: linear-gradient(to bottom,
-			<?php echo $node_color_comment; ?>,
-			<?php echo $node_color_comment; ?>cc
-	);
+	background: <?php echo $node_color_comment; ?>;
 	border-color: <?php echo $node_color_comment; ?>;
 }
 
 .dialplan-node-drag-zone.type-comment:hover {
-	background: linear-gradient(to bottom,
-			<?php echo $node_color_comment_hover; ?>,
-			<?php echo $node_color_comment_hover; ?>cc
-	);
+	background: <?php echo $node_color_comment_hover; ?>;
 	border-color: <?php echo $node_color_comment_hover; ?>;
 }
 
 /* Regex condition (condition with regex="all" etc.) - uses regex colors */
 .dialplan-node-drag-zone.type-regex-condition {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_regex; ?>,
-		<?php echo $node_color_regex; ?>cc
-	);
+	background: <?php echo $node_color_regex; ?>;
 	border-color: <?php echo $node_color_regex; ?>;
 }
 
 .dialplan-node-drag-zone.type-regex-condition:hover {
-	background: linear-gradient(to bottom,
-		<?php echo $node_color_regex_hover; ?>,
-		<?php echo $node_color_regex_hover; ?>cc
-	);
+	background: <?php echo $node_color_regex_hover; ?>;
 	border-color: <?php echo $node_color_regex_hover; ?>;
 }
 
 .dialplan-node-drag-zone:active {
 	cursor: grabbing;
 }
+
 
 .dialplan-node-drag-zone .node-type-label {
 	writing-mode: vertical-rl;
@@ -797,10 +782,10 @@ require_once "resources/header.php";
 
 .dialplan-node-children {
 	margin-left: 0;
-	padding: 4px 4px 4px 8px;
-	border-left: 2px solid #eee;
+	padding: 8px 8px 8px 12px;
+	border-left: 2px solid #e6e6e6;
 	min-height: 8px;
-	margin-top: 4px;
+	margin-top: 6px;
 	position: relative;
 }
 
@@ -858,20 +843,34 @@ require_once "resources/header.php";
 	display: flex;
 	flex-wrap: wrap;
 	align-items: flex-end;
-	gap: 6px;
+	gap: var(--dialplan-node-gap);
 	flex: 1;
 }
 
 .dialplan-node-form > div {
 	display: flex;
 	flex-direction: column;
-	min-width: 100px;
+	min-width: 120px;
 	flex: 1;
 }
 
 .dialplan-node-form > div.field-data {
-	flex: 2;
-	min-width: 180px;
+	flex: 2.3;
+	min-width: 240px;
+}
+
+.dialplan-node-form > div.field-data.multiline-field {
+	flex: 2.8;
+	min-width: 320px;
+}
+
+.dialplan-node-form > div.field-data.multiline-field.data-field textarea {
+	background-color: transparent;
+}
+
+.dialplan-node-form > div.field-data.multiline-field.data-field textarea:hover,
+.dialplan-node-form > div.field-data.multiline-field.data-field textarea:focus {
+	background-color: #dfeeff;
 }
 
 /* Property toggle switches (larger version for properties panel) */
@@ -969,18 +968,54 @@ require_once "resources/header.php";
 
 .dialplan-node-form label {
 	display: block;
-	font-size: 10px;
-	color: #888;
-	margin-bottom: 1px;
-	text-transform: uppercase;
+	font-size: 11px;
+	font-weight: 600;
+	color: #666;
+	margin-bottom: 4px;
+	text-transform: none;
 }
 
 .dialplan-node-form input,
 .dialplan-node-form select {
 	width: 100%;
-	height: 28px;
-	padding: 2px 6px;
+	height: 30px;
+	padding: 4px 8px;
 	font-size: 12px;
+	background-color: #eaf4ff;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none;
+}
+
+.dialplan-node-form textarea {
+	width: 100%;
+	min-height: 30px;
+	padding: 6px 8px;
+	font-size: 12px;
+	line-height: 1.35;
+	background-color: #eaf4ff;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none;
+	resize: vertical;
+	overflow: hidden;
+}
+
+.dialplan-node-form input:focus,
+.dialplan-node-form select:focus,
+.dialplan-node-form textarea:focus,
+.properties-card .formfld:focus {
+	background-color: #dfeeff;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none;
+}
+
+.properties-card .formfld {
+	background-color: #eaf4ff;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none;
 }
 
 /* Node disabled styling - use filter instead of opacity to avoid cascading to children */
@@ -1048,11 +1083,11 @@ require_once "resources/header.php";
 }
 
 .compact-btn {
-	padding: 3px 7px;
-	padding-top: 7px;
+	padding: 2px 6px;
+	padding-top: 6px;
 	font-size: 10px;
 	height: auto;
-	min-height: 30px;
+	min-height: 26px;
 	line-height: 1.2;
 	border-radius: 3px;
 	/* Raised / out state */
@@ -1098,11 +1133,11 @@ require_once "resources/header.php";
 	align-items: center;
 	justify-content: center;
 	width: fit-content;
-	min-width: 75px;
+	min-width: 68px;
 	height: auto;
-	min-height: 38px;
+	min-height: 30px;
 	padding: 2px 4px;
-	padding-top: 7px;
+	padding-top: 6px;
 	font-size: 9px;
 	font-weight: 700;
 	font-family: inherit;
@@ -1192,13 +1227,13 @@ require_once "resources/header.php";
 .dialplan-node-content {
 	display: flex;
 	align-items: flex-end;
-	gap: 8px;
+	gap: 10px;
 }
 
 .dialplan-node-actions {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: 6px;
 	flex-shrink: 0;
 }
 
@@ -1228,6 +1263,7 @@ require_once "resources/header.php";
 	cursor: pointer;
 	border: 1px dashed #ccc;
 	background: transparent;
+	color: inherit;
 	border-radius: 4px;
 	margin: 4px 2px;
 }
@@ -1235,6 +1271,63 @@ require_once "resources/header.php";
 .add-node-btn:hover {
 	background: #f5f5f5;
 	border-color: #999;
+}
+
+.add-node-btn.type-condition {
+	background: <?= $node_color_condition_soft ?>;
+	border-color: <?= dialplan_hex_to_rgba($node_color_condition, 0.30) ?>;
+	color: <?= $node_color_condition ?>;
+}
+
+.add-node-btn.type-condition:hover {
+	background: <?= dialplan_hex_to_rgba($node_color_condition, 0.18) ?>;
+	border-color: <?= $node_color_condition ?>;
+}
+
+.add-node-btn.type-action {
+	background: <?= $node_color_action_soft ?>;
+	border-color: <?= dialplan_hex_to_rgba($node_color_action, 0.30) ?>;
+	color: <?= $node_color_action ?>;
+}
+
+.add-node-btn.type-action:hover {
+	background: <?= dialplan_hex_to_rgba($node_color_action, 0.18) ?>;
+	border-color: <?= $node_color_action ?>;
+}
+
+.add-node-btn.type-anti-action {
+	background: <?= $node_color_anti_action_soft ?>;
+	border-color: <?= dialplan_hex_to_rgba($node_color_anti_action, 0.30) ?>;
+	color: <?= $node_color_anti_action ?>;
+}
+
+.add-node-btn.type-anti-action:hover {
+	background: <?= dialplan_hex_to_rgba($node_color_anti_action, 0.18) ?>;
+	border-color: <?= $node_color_anti_action ?>;
+}
+
+.add-node-btn.type-regex,
+.add-node-btn.type-regex-condition {
+	background: <?= $node_color_regex_soft ?>;
+	border-color: <?= dialplan_hex_to_rgba($node_color_regex, 0.30) ?>;
+	color: <?= $node_color_regex ?>;
+}
+
+.add-node-btn.type-regex:hover,
+.add-node-btn.type-regex-condition:hover {
+	background: <?= dialplan_hex_to_rgba($node_color_regex, 0.18) ?>;
+	border-color: <?= $node_color_regex ?>;
+}
+
+.add-node-btn.type-comment {
+	background: <?= $node_color_comment_soft ?>;
+	border-color: rgba(160, 160, 160, 0.30);
+	color: #666;
+}
+
+.add-node-btn.type-comment:hover {
+	background: rgba(160, 160, 160, 0.18);
+	border-color: #888;
 }
 
 /* Lint badge — small severity indicator attached to each node */
@@ -1751,16 +1844,16 @@ require_once "resources/header.php";
 						<!-- Nodes will be rendered here by JavaScript -->
 					</div>
 					<div class="add-node-buttons">
-						<button type="button" class="add-node-btn" onclick="addNode('action');">
+						<button type="button" class="add-node-btn type-action" onclick="addNode('action');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-action'] ?? 'Action'; ?>
 						</button>
-						<button type="button" class="add-node-btn" onclick="addNode('condition');">
+						<button type="button" class="add-node-btn type-condition" onclick="addNode('condition');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-condition'] ?? 'Condition'; ?>
 						</button>
-						<button type="button" class="add-node-btn" onclick="addNode('regex-condition');">
+						<button type="button" class="add-node-btn type-regex-condition" onclick="addNode('regex-condition');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-regex_condition'] ?? 'Regex'; ?>
 						</button>
-						<button type="button" class="add-node-btn" onclick="addNode('comment');">
+						<button type="button" class="add-node-btn type-comment" onclick="addNode('comment');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-comment'] ?? 'Comment'; ?>
 						</button>
 					</div>
@@ -2934,12 +3027,12 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 			div.appendChild(childrenDiv);
 
+			// Check if this is a regex condition (using both flag and attribute)
+			const isRegexCondition = node.isRegexCondition || node.attributes.regex;
+
 			// Add buttons - determine which types can be added
 			const addBtns = document.createElement('div');
 			addBtns.className = 'add-node-buttons';
-
-			// Check if this is a regex condition (using both flag and attribute)
-			const isRegexCondition = node.isRegexCondition || node.attributes.regex;
 
 			// Define button configs: [type, displayName, actualType, isRegexCondition]
 			const buttonConfigs = [];
@@ -2973,7 +3066,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 				const btn = document.createElement('button');
 				btn.type = 'button';
-				btn.className = 'add-node-btn';
+				btn.className = 'add-node-btn type-' + btnType;
 				btn.innerHTML = '<i class="fas fa-plus"></i> ' + displayName;
 				btn.onclick = function() {
 					flushPendingHistorySnapshot();
@@ -3182,10 +3275,19 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		return wrapper;
 	}
 
+	function autoSizeTextarea(textarea) {
+		if (!textarea) return;
+		textarea.style.height = 'auto';
+		textarea.style.height = Math.max(textarea.scrollHeight, 30) + 'px';
+	}
+
 	// Create form field element
 	function createFormField(label, name, value, onChange, options, cssClass, usePlaceholder) {
 		const wrapper = document.createElement('div');
 		if (cssClass) wrapper.className = cssClass;
+		if (name === 'data' || name === 'text') wrapper.classList.add('multiline-field');
+		if (name === 'data') wrapper.classList.add('data-field');
+		if (name === 'text') wrapper.classList.add('comment-field');
 		const usePlaceholderMode = usePlaceholder !== false;
 		const showLabel = !!options || !usePlaceholderMode;
 		const placeholderText = (!options && usePlaceholderMode) ? String(label || '').toUpperCase() : '';
@@ -3461,6 +3563,28 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			autocompleteWrapper.appendChild(input);
 			autocompleteWrapper.appendChild(dropdown);
 			wrapper.appendChild(autocompleteWrapper);
+		} else if (name === 'data' || name === 'text') {
+			input = document.createElement('textarea');
+			input.className = 'formfld';
+			input.value = value;
+			input.rows = 1;
+			if (placeholderText) input.placeholder = placeholderText;
+
+			input.onchange = function() {
+				autoSizeTextarea(this);
+				onChange(this.value);
+				scheduleHistorySnapshot();
+			};
+			input.oninput = function() {
+				autoSizeTextarea(this);
+				onChange(this.value);
+				scheduleHistorySnapshot();
+			};
+
+			wrapper.appendChild(input);
+			setTimeout(function() {
+				autoSizeTextarea(input);
+			}, 0);
 		} else {
 			input = document.createElement('input');
 			input.type = 'text';
