@@ -1141,6 +1141,9 @@ require_once "resources/header.php";
 	border: none !important;
 	box-shadow: none !important;
 	outline: none;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 /* Node disabled styling - use filter instead of opacity to avoid cascading to children */
@@ -1672,8 +1675,21 @@ require_once "resources/header.php";
 
 .properties-header h3 {
 	margin: 0;
-	font-size: 13px;
-	font-weight: 600;
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.2;
+	color: #1f2d3d;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-right: 10px;
+	min-width: 0;
+	flex: 1;
+}
+
+.properties-header h3 i {
+	font-size: 12px;
+	color: #607d8b;
 }
 
 .properties-header .toggle-icon {
@@ -1682,6 +1698,52 @@ require_once "resources/header.php";
 
 .properties-header.collapsed .toggle-icon {
 	transform: rotate(-90deg);
+}
+
+.properties-tags {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	margin-right: auto;
+}
+
+.properties-tags.hidden {
+	display: none;
+}
+
+.property-tag {
+	display: inline-block;
+	padding: 2px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	background: #5cb85c;
+	color: white;
+	border-radius: 3px;
+	text-transform: capitalize;
+}
+
+.property-tag:first-of-type {
+	margin-left: 0;
+}
+
+.dialplan-name-tag {
+	display: inline-block;
+	padding: 2px 8px;
+	font-size: 12px;
+	font-weight: 700;
+	color: #102637;
+	border: 1.5px solid #2196F3;
+	border-radius: 3px;
+	background: rgba(33, 150, 243, 0.08);
+	margin-right: 6px;
+	white-space: nowrap;
+}
+
+#properties-header-title {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
 }
 
 .properties-content {
@@ -1717,12 +1779,76 @@ require_once "resources/header.php";
 }
 
 .autocomplete-wrapper input.invalid-application {
-	border-color: #d9534f !important;
-	box-shadow: 0 0 3px rgba(217, 83, 79, 0.4);
+	border-color: #f0ad4e !important;
+	box-shadow: 0 0 3px rgba(240, 173, 78, 0.4);
+}
+
+.autocomplete-wrapper input.invalid-domain {
+	border-color: #f0ad4e !important;
+	box-shadow: 0 0 3px rgba(240, 173, 78, 0.4);
 }
 
 .autocomplete-wrapper input.valid-application {
 	border-color: #5cb85c !important;
+}
+
+.context-domain-overlay-anchor {
+	position: relative;
+}
+
+.context-domain-link-connector {
+	position: absolute;
+	top: calc(100% - 12px);
+	left: -23px;
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 2;
+}
+
+.context-domain-link-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: 1px solid #c6ced7;
+	border-radius: 12px;
+	background: #f5f8fb;
+	color: #4f5f73;
+	cursor: pointer;
+	transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+	z-index: 1;
+}
+
+.context-domain-link-toggle:hover {
+	background: #e9f2ff;
+	border-color: #8fb3db;
+}
+
+.context-domain-link-toggle:focus-visible {
+	outline: none;
+	border-color: #3c7dc0;
+	box-shadow: 0 0 0 2px rgba(60, 125, 192, 0.18);
+}
+
+.context-domain-link-toggle.linked {
+	background: #e9f6ee;
+	border-color: #8bc89e;
+	color: #2f7550;
+}
+
+.context-domain-link-toggle.unlinked {
+	background: #fff7e8;
+	border-color: #d8b77e;
+	color: #86652f;
+}
+
+#context_domain_link_icon {
+	font-size: 11px;
+	transform: rotate(90deg);
 }
 
 .autocomplete-dropdown {
@@ -1816,11 +1942,19 @@ require_once "resources/header.php";
 
 <!-- Basic Properties Card (Collapsible) -->
 <div class="properties-card">
-	<div class="properties-header" onclick="togglePropertiesPanel();" id="properties-header">
-		<h3><i class="fas fa-cog"></i> <?php echo $text['label-properties'] ?? 'Properties'; ?></h3>
+	<div class="properties-header collapsed" onclick="togglePropertiesPanel();" id="properties-header">
+		<h3><i class="fas fa-cog"></i> <span id="properties-header-title"><?php echo escape($dialplan_name); ?></span></h3>
+		<div class="properties-tags" id="properties-tags">
+			<?php if ($dialplan_continue === 'true'): ?>
+			<span class="property-tag">continue</span>
+			<?php endif; ?>
+			<?php if ($dialplan_destination === 'true'): ?>
+			<span class="property-tag">destination</span>
+			<?php endif; ?>
+		</div>
 		<i class="fas fa-chevron-down toggle-icon" id="properties-toggle-icon"></i>
 	</div>
-	<div class="properties-content" id="properties-content">
+	<div class="properties-content collapsed" id="properties-content">
 		<table width="100%" border="0" cellpadding="0" cellspacing="0">
 			<tr>
 				<td width="50%" style="vertical-align: top;">
@@ -1828,36 +1962,67 @@ require_once "resources/header.php";
 						<tr>
 							<td class="vncellreq" width="30%"><?php echo $text['label-name']; ?></td>
 							<td class="vtable" width="70%">
-								<input class="formfld" type="text" name="dialplan_name" id="dialplan_name" maxlength="255" value="<?php echo escape($dialplan_name); ?>" required>
+								<input class="formfld" type="text" name="dialplan_name" id="dialplan_name" maxlength="255" value="<?php echo escape($dialplan_name); ?>" oninput="updatePropertyHeaderTitle();" required>
 							</td>
 						</tr>
 						<tr>
 							<td class="vncell"><?php echo $text['label-number']; ?></td>
 							<td class="vtable">
-								<input class="formfld" type="text" name="dialplan_number" id="dialplan_number" maxlength="255" value="<?php echo escape($dialplan_number); ?>">
+								<input class="formfld" type="text" name="dialplan_number" id="dialplan_number" maxlength="255" value="<?php echo escape($dialplan_number); ?>" oninput="updatePropertyHeaderTitle();">
 							</td>
 						</tr>
 						<tr>
 							<td class="vncell"><?php echo $text['label-context']; ?></td>
-							<td class="vtable">
-								<input class="formfld" type="text" name="dialplan_context" id="dialplan_context" maxlength="255" value="<?php echo escape($dialplan_context); ?>">
+							<td class="vtable context-domain-overlay-anchor">
+								<input class="formfld" type="text" name="dialplan_context" id="dialplan_context" maxlength="255" list="dialplan_context_suggestions" autocomplete="off" value="<?php echo escape($dialplan_context); ?>" onchange="updatePropertyHeaderTitle();" oninput="updatePropertyHeaderTitle();">
+								<datalist id="dialplan_context_suggestions">
+									<option value="global"></option>
+									<?php
+									$context_domain_names = [];
+									if (is_array($_SESSION['domains'])) {
+										foreach ($_SESSION['domains'] as $domain_item) {
+											if (!empty($domain_item['domain_name'])) {
+												$context_domain_names[] = $domain_item['domain_name'];
+											}
+										}
+									}
+									$context_domain_names = array_values(array_unique($context_domain_names));
+									natcasesort($context_domain_names);
+									foreach ($context_domain_names as $context_domain_name):
+									?>
+									<option value="<?php echo escape($context_domain_name); ?>"></option>
+									<?php endforeach; ?>
+								</datalist>
+								<?php if ($has_dialplan_domain): ?>
+								<input type="hidden" name="context_domain_linked" id="context_domain_linked" value="1">
+								<div class="context-domain-link-connector linked" id="context_domain_link_connector">
+									<button type="button" class="context-domain-link-toggle linked" id="context_domain_link_toggle" onclick="toggleContextDomainLink();" title="Linked: Context mirrors Domain" aria-label="Linked: Context mirrors Domain">
+										<i class="fas fa-link" id="context_domain_link_icon"></i>
+									</button>
+								</div>
+								<?php endif; ?>
 							</td>
 						</tr>
 						<?php if ($has_dialplan_domain): ?>
 						<tr>
 							<td class="vncell"><?php echo $text['label-domain']; ?></td>
 							<td class="vtable">
-								<select class="formfld" id="domain_uuid" name="domain_uuid" onchange="domainChanged(this)">
-									<?php if (!is_uuid($dialplan_domain_uuid)): ?>
-									<option value="" selected="selected"><?php echo $text['select-global']; ?></option>
-									<?php else: ?>
-									<option value=""><?php echo $text['select-global']; ?></option>
-									<?php endif; ?>
-									<?php if (is_array($_SESSION['domains']) && sizeof($_SESSION['domains']) > 0): ?>
-									<?php foreach ($_SESSION['domains'] as $dom_row): ?>
-									<option value="<?php echo escape($dom_row['domain_uuid']); ?>"<?php echo ($dom_row['domain_uuid'] == $dialplan_domain_uuid ? ' selected="selected"' : ''); ?>><?php echo escape($dom_row['domain_name']); ?></option>
+								<select class="formfld" name="domain_uuid" id="domain_uuid" data-domain-search="false" onchange="domainChanged(this);">
+									<option value="">global</option>
+									<?php
+									$domain_option_list = [];
+									if (is_array($_SESSION['domains'])) {
+										foreach ($_SESSION['domains'] as $domain_item) {
+											if (!empty($domain_item['domain_uuid']) && !empty($domain_item['domain_name'])) {
+												$domain_option_list[$domain_item['domain_uuid']] = $domain_item['domain_name'];
+											}
+										}
+									}
+									natcasesort($domain_option_list);
+									foreach ($domain_option_list as $option_uuid => $option_name):
+									?>
+									<option value="<?php echo escape($option_uuid); ?>" <?php echo ($dialplan_domain_uuid === $option_uuid) ? 'selected' : ''; ?>><?php echo escape($option_name); ?></option>
 									<?php endforeach; ?>
-									<?php endif; ?>
 								</select>
 							</td>
 						</tr>
@@ -1882,7 +2047,7 @@ require_once "resources/header.php";
 						<tr>
 							<td class="vncellreq" width="30%"><?php echo $text['label-order']; ?></td>
 							<td class="vtable" width="70%">
-								<select class="formfld" name="dialplan_order" id="dialplan_order">
+								<select class="formfld" name="dialplan_order" id="dialplan_order" onchange="updatePropertyHeaderTitle();">
 									<?php for ($i = 0; $i <= 999; $i++): ?>
 									<option value="<?php echo str_pad($i, 3, '0', STR_PAD_LEFT); ?>" <?php echo (int) $dialplan_order === $i ? 'selected' : ''; ?>><?php echo str_pad($i, 3, '0', STR_PAD_LEFT); ?></option>
 									<?php endfor; ?>
@@ -1918,7 +2083,7 @@ require_once "resources/header.php";
 						<tr>
 							<td class="vncell"><?php echo $text['label-description']; ?></td>
 							<td class="vtable">
-								<input class="formfld" type="text" name="dialplan_description" id="dialplan_description" maxlength="255" value="<?php echo escape($dialplan_description); ?>">
+								<input class="formfld" type="text" name="dialplan_description" id="dialplan_description" maxlength="255" value="<?php echo escape($dialplan_description); ?>" onchange="updatePropertyHeaderTitle();" oninput="updatePropertyHeaderTitle();">
 							</td>
 						</tr>
 					</table>
@@ -2144,7 +2309,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	let isMobile = window.matchMedia('(max-width: 1024px)').matches;
 	let xmlPanelVisible = <?php echo $xml_panel_visible ? 'true' : 'false'; ?>;
 	let skipAceChange = false;
-	let propertiesCollapsed = false; // Start expanded so properties are visible
+	let propertiesCollapsed = true; // Start collapsed (hidden) so properties are hidden
 	let historyStack = [];
 	let historyIndex = -1;
 	let historyRestoreInProgress = false;
@@ -2202,7 +2367,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			destination: val('dialplan_destination'),
 			enabled: val('dialplan_enabled'),
 			description: val('dialplan_description'),
-			domain_uuid: val('domain_uuid')
+			domain_uuid: val('domain_uuid'),
+			context_domain_linked: val('context_domain_linked')
 		};
 	}
 
@@ -2218,6 +2384,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		setValue('dialplan_context', meta.context);
 		setValue('dialplan_order', meta.order);
 		setValue('dialplan_description', meta.description);
+		setValue('context_domain_linked', meta.context_domain_linked);
 		if (document.getElementById('domain_uuid')) {
 			setValue('domain_uuid', meta.domain_uuid);
 		}
@@ -2225,6 +2392,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		setPropertyToggleUi('dialplan_continue', meta.continue);
 		setPropertyToggleUi('dialplan_destination', meta.destination);
 		syncDialplanEnabledUi(meta.enabled);
+		if (typeof applyContextDomainLinkedState === 'function') {
+			applyContextDomainLinkedState(false);
+		}
 	}
 
 	function getHistorySnapshot() {
@@ -2387,7 +2557,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 	};
 
-	// Domain map for context auto-update (uuid => name, empty string => global context placeholder)
+	// Domain map for context/domain synchronization (uuid => name, empty string => global)
 	const domainNameMap = <?php
 		$dom_map = [''];
 		if (is_array($_SESSION['domains'])) {
@@ -2398,17 +2568,116 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		echo json_encode($dom_map);
 	?>;
 
-	// When domain dropdown changes, sync the context field if it still matches the previous domain name
-	window.domainChanged = function(selectEl) {
+	const domainOptions = Object.keys(domainNameMap).filter(function(uuid) {
+		return uuid !== '' && domainNameMap[uuid] !== '';
+	}).map(function(uuid) {
+		return { uuid: uuid, name: domainNameMap[uuid] };
+	}).sort(function(a, b) {
+		return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+	});
+
+	const globalDomainLabel = 'global';
+	const allDomainOptions = [{ uuid: '', name: globalDomainLabel }].concat(domainOptions);
+	const domainUuidByName = {};
+	allDomainOptions.forEach(function(item) {
+		domainUuidByName[item.name.toLowerCase()] = item.uuid;
+	});
+
+	let contextDomainSyncInProgress = false;
+
+	function getSelectedDomainName() {
+		const domainSelect = document.getElementById('domain_uuid');
+		if (!domainSelect) return globalDomainLabel;
+		const uuid = domainSelect.value || '';
+		return domainNameMap[uuid] || globalDomainLabel;
+	}
+
+	function setDomainByUuid(uuid) {
+		const domainSelect = document.getElementById('domain_uuid');
+		if (!domainSelect) return false;
+		const value = uuid || '';
+		const exists = Array.from(domainSelect.options).some(function(opt) {
+			return opt.value === value;
+		});
+		if (!exists) return false;
+		domainSelect.value = value;
+		return true;
+	}
+
+	function setDomainByName(name) {
+		const lookup = (name || '').trim().toLowerCase();
+		if (!lookup) return false;
+		if (Object.prototype.hasOwnProperty.call(domainUuidByName, lookup)) {
+			return setDomainByUuid(domainUuidByName[lookup]);
+		}
+		return false;
+	}
+
+	function isContextDomainLinked() {
+		return val('context_domain_linked') === '1';
+	}
+
+	function syncContextToDomain() {
 		const contextInput = document.getElementById('dialplan_context');
 		if (!contextInput) return;
-		flushPendingHistorySnapshot();
-		const newDomainName = domainNameMap[selectEl.value] ?? '';
-		// Only overwrite context if it currently matches a known domain name (was following domain)
-		const knownNames = Object.values(domainNameMap);
-		if (knownNames.includes(contextInput.value)) {
-			contextInput.value = newDomainName;
+		contextInput.value = getSelectedDomainName();
+	}
+
+	function applyContextDomainLinkedState(syncValues) {
+		const linked = isContextDomainLinked();
+		const toggleBtn = document.getElementById('context_domain_link_toggle');
+		const toggleIcon = document.getElementById('context_domain_link_icon');
+		const connector = document.getElementById('context_domain_link_connector');
+
+		if (toggleBtn) {
+			toggleBtn.classList.toggle('linked', linked);
+			toggleBtn.classList.toggle('unlinked', !linked);
+			const linkLabel = linked ? 'Linked: Context mirrors Domain' : 'Unlinked: Context can be freeform';
+			toggleBtn.title = linkLabel;
+			toggleBtn.setAttribute('aria-label', linkLabel);
 		}
+		if (connector) {
+			connector.classList.toggle('linked', linked);
+			connector.classList.toggle('unlinked', !linked);
+		}
+		if (toggleIcon) {
+			toggleIcon.classList.toggle('fa-link', linked);
+			toggleIcon.classList.toggle('fa-unlink', !linked);
+		}
+
+		if (syncValues && linked) {
+			const contextInput = document.getElementById('dialplan_context');
+			const contextValue = contextInput ? contextInput.value : '';
+			if (!setDomainByName(contextValue)) {
+				syncContextToDomain();
+			}
+		}
+
+		updatePropertyHeaderTitle();
+	}
+
+	window.toggleContextDomainLink = function() {
+		const linkedInput = document.getElementById('context_domain_linked');
+		if (!linkedInput) return;
+
+		flushPendingHistorySnapshot();
+		linkedInput.value = linkedInput.value === '1' ? '0' : '1';
+		applyContextDomainLinkedState(true);
+		checkDirtyState();
+		scheduleHistorySnapshot();
+	};
+
+	// In linked mode, domain changes mirror to context.
+	window.domainChanged = function(selectEl) {
+		const contextInput = document.getElementById('dialplan_context');
+		if (!contextInput || !selectEl) return;
+		flushPendingHistorySnapshot();
+		if (isContextDomainLinked()) {
+			contextDomainSyncInProgress = true;
+			contextInput.value = domainNameMap[selectEl.value] || globalDomainLabel;
+			contextDomainSyncInProgress = false;
+		}
+		updatePropertyHeaderTitle();
 		checkDirtyState();
 		scheduleHistorySnapshot();
 	};
@@ -2417,6 +2686,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	window.updatePropertyToggle = function(fieldName, isChecked) {
 		flushPendingHistorySnapshot();
 		setPropertyToggleUi(fieldName, isChecked ? 'true' : 'false');
+		// Update tags display when continue or destination changes
+		updatePropertyTags();
 		// For continue (part of extension XML), regenerate XML to keep ACE in sync.
 		// For other metadata fields (destination), compare against saved baseline.
 		if (fieldName === 'dialplan_continue' && tree) {
@@ -2425,6 +2696,144 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		} else {
 			checkDirtyState();
 			scheduleHistorySnapshot();
+		}
+	};
+
+	// Update property header title with full format: "{order} {name} ({number}) - {context}@{domain} - {description}"
+	// Truncation priority: description → domain → number → context → order → name
+	window.updatePropertyHeaderTitle = function() {
+		const titleElement = document.getElementById('properties-header-title');
+		if (!titleElement) return;
+
+		const order = (document.getElementById('dialplan_order') || { value: '000' }).value || '000';
+		const dialplanName = (document.getElementById('dialplan_name') || { value: 'Unnamed' }).value || 'Unnamed';
+		const number = (document.getElementById('dialplan_number') || { value: '' }).value;
+		const context = (document.getElementById('dialplan_context') || { value: globalDomainLabel }).value || globalDomainLabel;
+		const domain = getSelectedDomainName();
+		const description = (document.getElementById('dialplan_description') || { value: '' }).value;
+
+		// Build the full title string with name wrapped in badge: "{order} <badge>{name}</badge> ({number}) {context}@{domain} - {description}"
+		let title = order + ' <span class="dialplan-name-tag">' + dialplanName + '</span>';
+
+		if (number) {
+			title += ' (' + number + ')';
+		}
+
+		title += ' ' + context + '@' + domain;
+
+		if (description) {
+			title += ' - ' + description;
+		}
+
+		titleElement.innerHTML = title;
+		
+		// Create plain text version for tooltip (without HTML)
+		let plainTitle = order + ' ' + dialplanName;
+		if (number) {
+			plainTitle += ' (' + number + ')';
+		}
+		plainTitle += ' ' + context + '@' + domain;
+		if (description) {
+			plainTitle += ' - ' + description;
+		}
+		titleElement.title = plainTitle;
+	};
+
+	window.initContextDomainControls = function() {
+		const contextInput = document.getElementById('dialplan_context');
+		const domainSelect = document.getElementById('domain_uuid');
+		const linkedInput = document.getElementById('context_domain_linked');
+
+		if (!contextInput) return;
+
+		if (linkedInput && !linkedInput.value) {
+			const contextLower = (contextInput.value || '').trim().toLowerCase();
+			const selectedDomainLower = getSelectedDomainName().toLowerCase();
+			linkedInput.value = contextLower && contextLower === selectedDomainLower ? '1' : '0';
+		}
+
+		applyContextDomainLinkedState(true);
+
+		contextInput.addEventListener('input', function() {
+			if (!isContextDomainLinked() || contextDomainSyncInProgress) {
+				updatePropertyHeaderTitle();
+				return;
+			}
+
+			const typed = (contextInput.value || '').trim();
+			if (!typed) return;
+
+			if (setDomainByName(typed)) {
+				contextDomainSyncInProgress = true;
+				contextInput.value = getSelectedDomainName();
+				contextDomainSyncInProgress = false;
+			}
+
+			updatePropertyHeaderTitle();
+		});
+
+		contextInput.addEventListener('change', function() {
+			if (!isContextDomainLinked() || contextDomainSyncInProgress) {
+				updatePropertyHeaderTitle();
+				return;
+			}
+
+			flushPendingHistorySnapshot();
+			const typed = (contextInput.value || '').trim();
+			if (!setDomainByName(typed)) {
+				syncContextToDomain();
+			}
+			updatePropertyHeaderTitle();
+			checkDirtyState();
+			scheduleHistorySnapshot();
+		});
+
+		contextInput.addEventListener('blur', function() {
+			if (!isContextDomainLinked() || contextDomainSyncInProgress) {
+				return;
+			}
+			if (!setDomainByName(contextInput.value)) {
+				syncContextToDomain();
+			}
+			updatePropertyHeaderTitle();
+		});
+
+		if (domainSelect && isContextDomainLinked() && !contextInput.value) {
+			syncContextToDomain();
+		}
+	};
+
+	// Update property tags display based on current values
+	window.updatePropertyTags = function() {
+		const tagsContainer = document.getElementById('properties-tags');
+		if (!tagsContainer) return;
+		
+		// Clear existing tags
+		tagsContainer.innerHTML = '';
+		
+		// Add continue tag if enabled
+		const continueValue = document.getElementById('dialplan_continue');
+		if (continueValue && continueValue.value === 'true') {
+			const tag = document.createElement('span');
+			tag.className = 'property-tag';
+			tag.textContent = 'continue';
+			tagsContainer.appendChild(tag);
+		}
+		
+		// Add destination tag if enabled
+		const destinationValue = document.getElementById('dialplan_destination');
+		if (destinationValue && destinationValue.value === 'true') {
+			const tag = document.createElement('span');
+			tag.className = 'property-tag';
+			tag.textContent = 'destination';
+			tagsContainer.appendChild(tag);
+		}
+		
+		// Toggle visibility of tags container
+		if (tagsContainer.children.length === 0) {
+			tagsContainer.classList.add('hidden');
+		} else {
+			tagsContainer.classList.remove('hidden');
 		}
 	};
 
@@ -2585,6 +2994,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			     || val('dialplan_enabled') !== (savedMeta.enabled     || '')
 			     || val('dialplan_description') !== (savedMeta.description || '')
 			     || val('domain_uuid') !== (savedMeta.domain_uuid || '')
+			     || val('context_domain_linked') !== (savedMeta.context_domain_linked || '')
 			     || val('dialplan_continue') !== (savedMeta.continue || '');
 		}
 		isDirty = dirty;
@@ -4641,13 +5051,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			scheduleHistorySnapshot();
 		});
 	}
-	const domainEl = document.getElementById('domain_uuid');
-	if (domainEl) {
-		domainEl.addEventListener('change', function() {
-			checkDirtyState();
-			scheduleHistorySnapshot();
-		});
-	}
+	// Domain and link state changes are handled by domainChanged() and toggleContextDomainLink().
 
 	// Sync dialplan name with extension name
 	document.getElementById('dialplan_name').addEventListener('input', function() {
@@ -4678,6 +5082,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		initXmlChannel();
 		announceMainReady();
 		updateHistoryButtons();
+		updatePropertyTags(); // Initialize property tags display
+		initContextDomainControls(); // Initialize context-domain linkage and syncing
+		updatePropertyHeaderTitle(); // Initialize header title display
 	});
 })();
 </script>
