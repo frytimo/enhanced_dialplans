@@ -56,6 +56,31 @@ var DialplanLintRules = (function () {
 
     var rules = [
 
+        // ── Rule 0 ───────────────────────────────────────────────────────────
+        // Comments above the <extension> tag are outside normal dialplan
+        // extension scope. They are preserved for visibility in the editor,
+        // but should be flagged so users can intentionally keep or relocate
+        // them.
+        {
+            id:          'comment-outside-extension',
+            severity:    'warning',
+            description: 'Comment exists above the <extension> tag',
+            check: function (tree) {
+                var findings = [];
+                var children = (tree && tree.children) || [];
+                for (var i = 0; i < children.length; i++) {
+                    var node = children[i];
+                    if (!node || node.type !== 'comment') continue;
+                    if (!(node.meta && node.meta.outsideExtension)) continue;
+                    findings.push({
+                        node: node,
+                        message: 'Comment was found above the <extension> tag (outside normal extension scope)'
+                    });
+                }
+                return findings;
+            }
+        },
+
         // ── Rule 1 ───────────────────────────────────────────────────────────
         // An enabled action or anti-action with no application set will be
         // silently skipped by FreeSWITCH, which is almost certainly unintended.

@@ -53,7 +53,10 @@ var DialplanParser = (function () {
             var xmlDeclarationPattern = /^<\?xml[^?]*\?>\s*/i;
             var withoutDecl = trimmed.replace(xmlDeclarationPattern, '');
 
-            if (!(/^<extension[\s>]/i.test(withoutDecl))) {
+            // Allow optional leading XML comments before the extension root.
+            var startsWithExtension = /^(?:<!--[\s\S]*?-->\s*)*<extension[\s>]/i.test(withoutDecl);
+
+            if (!startsWithExtension) {
                 // Wrap bare conditions in a minimal extension element
                 xmlToParse = '<extension name="" continue="false" uuid="">' + withoutDecl + '</extension>';
             } else {
@@ -86,6 +89,19 @@ var DialplanParser = (function () {
                 },
                 children: []
             };
+
+            // Preserve comments that appear before <extension> at document level.
+            // This supports legacy dialplans that begin with a banner comment line.
+            var docNodes = doc.childNodes || [];
+            for (var di = 0; di < docNodes.length; di++) {
+                var docNode = docNodes[di];
+                if (docNode === extensionEl) {
+                    break;
+                }
+                if (docNode.nodeType === 8 /* Comment node */) {
+                    tree.children.push(parseCommentNode(docNode.nodeValue || '', { outsideExtension: true }));
+                }
+            }
 
             parseChildElements(extensionEl.childNodes, tree.children);
 
@@ -314,11 +330,14 @@ var DialplanParser = (function () {
      * @param {string} commentText
      * @returns {object}
      */
-    function parseCommentNode(commentText) {
+    function parseCommentNode(commentText, meta) {
         return {
             type: 'comment',
             attributes: {
                 text: unescapeCommentText(commentText || '')
+            },
+            meta: {
+                outsideExtension: !!(meta && meta.outsideExtension)
             },
             enabled: true
         };
