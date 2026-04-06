@@ -1739,6 +1739,19 @@ require_once "resources/header.php";
 	white-space: nowrap;
 }
 
+.dialplan-number-tag {
+	display: inline-block;
+	padding: 2px 7px;
+	font-size: 11px;
+	font-weight: 700;
+	color: #4b2a8a;
+	border: 1px solid #b79df2;
+	border-radius: 3px;
+	background: rgba(183, 157, 242, 0.22);
+	white-space: nowrap;
+	margin-left: 6px;
+}
+
 #properties-header-title {
 	white-space: nowrap;
 	overflow: hidden;
@@ -2309,7 +2322,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	let isMobile = window.matchMedia('(max-width: 1024px)').matches;
 	let xmlPanelVisible = <?php echo $xml_panel_visible ? 'true' : 'false'; ?>;
 	let skipAceChange = false;
-	let propertiesCollapsed = true; // Start collapsed (hidden) so properties are hidden
+	let propertiesCollapsed = true; // Start collapsed so properties are hidden initially
 	let historyStack = [];
 	let historyIndex = -1;
 	let historyRestoreInProgress = false;
@@ -2699,8 +2712,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 	};
 
-	// Update property header title with full format: "{order} {name} ({number}) - {context}@{domain} - {description}"
-	// Truncation priority: description → domain → number → context → order → name
+	// Update property header title format: "{order} {name} @ {context}" with optional number tag
 	window.updatePropertyHeaderTitle = function() {
 		const titleElement = document.getElementById('properties-header-title');
 		if (!titleElement) return;
@@ -2709,20 +2721,13 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const dialplanName = (document.getElementById('dialplan_name') || { value: 'Unnamed' }).value || 'Unnamed';
 		const number = (document.getElementById('dialplan_number') || { value: '' }).value;
 		const context = (document.getElementById('dialplan_context') || { value: globalDomainLabel }).value || globalDomainLabel;
-		const domain = getSelectedDomainName();
-		const description = (document.getElementById('dialplan_description') || { value: '' }).value;
-
-		// Build the full title string with name wrapped in badge: "{order} <badge>{name}</badge> ({number}) {context}@{domain} - {description}"
-		let title = order + ' <span class="dialplan-name-tag">' + dialplanName + '</span>';
+		// Build title with order+name in one badge, then number @ context
+		let title = '<span class="dialplan-name-tag">' + order + ' ' + dialplanName + '</span>';
 
 		if (number) {
-			title += ' (' + number + ')';
-		}
-
-		title += ' ' + context + '@' + domain;
-
-		if (description) {
-			title += ' - ' + description;
+			title += ' <span class="dialplan-number-tag">' + number + '</span> @ ' + context;
+		} else {
+			title += ' @ ' + context;
 		}
 
 		titleElement.innerHTML = title;
@@ -2730,11 +2735,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Create plain text version for tooltip (without HTML)
 		let plainTitle = order + ' ' + dialplanName;
 		if (number) {
-			plainTitle += ' (' + number + ')';
-		}
-		plainTitle += ' ' + context + '@' + domain;
-		if (description) {
-			plainTitle += ' - ' + description;
+			plainTitle += ' ' + number + ' @ ' + context;
+		} else {
+			plainTitle += ' @ ' + context;
 		}
 		titleElement.title = plainTitle;
 	};
