@@ -578,8 +578,8 @@ require_once "resources/header.php";
 <style>
 :root {
 	--dialplan-editor-breakpoint: 1024px;
-	--dialplan-node-spacing-y: 8px;
-	--dialplan-node-gap: 10px;
+	--dialplan-node-spacing-y: 5px;
+	--dialplan-node-gap: 7px;
 	--dialplan-node-radius: 6px;
 }
 
@@ -760,12 +760,12 @@ require_once "resources/header.php";
 /* Visual tree nodes - compact layout */
 .dialplan-node {
 	margin: var(--dialplan-node-spacing-y) 0;
-	padding: 10px 12px 10px 30px;
+	padding: 8px 10px 7px 28px;
 	border: 1px solid var(--border-color, #ddd);
 	border-radius: var(--dialplan-node-radius);
 	background: var(--card-background-color, #fff);
 	position: relative;
-	min-height: 40px;
+	min-height: 34px;
 	display: flex;
 	flex-direction: column;
 	gap: var(--dialplan-node-gap);
@@ -788,7 +788,7 @@ require_once "resources/header.php";
 .dialplan-node.comment {
 	background: #f5f5f5;
 	border-color: #e1e1e1;
-	min-height: 56px;
+	min-height: 46px;
 }
 
 /* Left border drag zone with rotated label - base styling */
@@ -907,11 +907,23 @@ require_once "resources/header.php";
 
 .dialplan-node-children {
 	margin-left: 0;
-	padding: 8px 8px 8px 12px;
-	border-left: 2px solid #e6e6e6;
-	min-height: 8px;
-	margin-top: 6px;
+	padding: 2px 6px 0 10px;
+	border-left: 1px solid #e6e6e6;
+	min-height: 0;
+	margin-top: 2px;
 	position: relative;
+}
+
+.dialplan-node-children.is-empty {
+	padding: 0;
+	margin-top: 0;
+	border-left-color: transparent;
+}
+
+body.drag-active .dialplan-node-children.is-empty {
+	padding: 2px 0 0 8px;
+	margin-top: 1px;
+	border-left-color: rgba(0, 0, 0, 0.12);
 }
 
 /* Drag and drop styles */
@@ -952,16 +964,47 @@ require_once "resources/header.php";
 }
 
 .drop-zone {
-	min-height: 30px;
-	border: 2px dashed transparent;
+	position: relative;
+	min-height: 0;
+	border: none;
 	border-radius: 4px;
-	margin: 4px 0;
-	transition: all 0.2s ease;
+	margin: 0;
+	background: transparent;
+	transition: all 0.15s ease;
+}
+
+body.drag-active .drop-zone {
+	min-height: 8px;
+	margin: 1px 0;
+}
+
+.drop-zone::before {
+	content: '';
+	position: absolute;
+	left: 8px;
+	right: 8px;
+	top: 50%;
+	height: 3px;
+	border-radius: 999px;
+	background: transparent;
+	transform: translateY(-50%);
+	opacity: 0;
+	transition: opacity 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dialplan-node-children > .drop-zone::before {
+	left: 0;
+	right: 2px;
 }
 
 .drop-zone.drag-over {
-	border-color: #5bc0de;
-	background: rgba(91, 192, 222, 0.1);
+	background: transparent;
+}
+
+.drop-zone.drag-over::before {
+	opacity: 1;
+	background: #5bc0de;
+	box-shadow: 0 0 0 2px rgba(91, 192, 222, 0.16);
 }
 
 .dialplan-node-form {
@@ -1096,7 +1139,7 @@ require_once "resources/header.php";
 	font-size: 11px;
 	font-weight: 600;
 	color: #666;
-	margin-bottom: 4px;
+	margin-bottom: 2px;
 	text-transform: none;
 }
 
@@ -1105,7 +1148,9 @@ require_once "resources/header.php";
 	width: 100%;
 	height: 30px;
 	padding: 4px 8px;
-	font-size: 12px;
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.2;
 	background-color: #eaf4ff;
 	border: none !important;
 	box-shadow: none !important;
@@ -1115,9 +1160,10 @@ require_once "resources/header.php";
 .dialplan-node-form textarea {
 	width: 100%;
 	min-height: 30px;
-	padding: 6px 8px;
-	font-size: 12px;
-	line-height: 1.35;
+	padding: 5px 8px;
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.3;
 	background-color: #eaf4ff;
 	border: none !important;
 	box-shadow: none !important;
@@ -1193,12 +1239,12 @@ require_once "resources/header.php";
 /* Compact button group (BREAK, REGEX mode) — rocker style */
 .dialplan-node-form > .compact-btn-group-wrapper {
 	flex: 0 1 320px;
-	min-width: 260px;
+	min-width: 236px;
 }
 
 .dialplan-node-form > .compact-btn-group-wrapper.regex-mode-wrapper {
 	flex-basis: 240px;
-	min-width: 195px;
+	min-width: 180px;
 }
 
 .dialplan-node-form > .compact-btn-group-wrapper.break-right-wrapper {
@@ -1211,11 +1257,11 @@ require_once "resources/header.php";
 }
 
 .compact-btn {
-	padding: 2px 6px;
-	padding-top: 6px;
+	padding: 2px 5px;
+	padding-top: 5px;
 	font-size: 10px;
 	height: auto;
-	min-height: 26px;
+	min-height: 24px;
 	line-height: 1.2;
 	border-radius: 3px;
 	/* Raised / out state */
@@ -1261,11 +1307,11 @@ require_once "resources/header.php";
 	align-items: center;
 	justify-content: center;
 	width: fit-content;
-	min-width: 68px;
+	min-width: 60px;
 	height: auto;
-	min-height: 30px;
+	min-height: 26px;
 	padding: 2px 4px;
-	padding-top: 6px;
+	padding-top: 5px;
 	font-size: 9px;
 	font-weight: 700;
 	font-family: inherit;
@@ -1355,20 +1401,21 @@ require_once "resources/header.php";
 .dialplan-node-content {
 	display: flex;
 	align-items: flex-end;
-	gap: 10px;
+	gap: 8px;
+	padding-left: 10px;
 }
 
 .dialplan-node-actions {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 4px;
 	flex-shrink: 0;
 }
 
 .dialplan-node-actions .btn {
-	padding: 4px 8px;
-	height: 28px;
-	min-width: 28px;
+	padding: 3px 7px;
+	height: 24px;
+	min-width: 24px;
 	color: #000;
 }
 
@@ -1378,22 +1425,26 @@ require_once "resources/header.php";
 
 /* Add node buttons */
 .add-node-buttons {
-	margin-left: 8px;
-	padding: 2px 0;
+	margin-left: 4px;
+	padding: 0;
+}
+
+.dialplan-node-children.is-empty + .add-node-buttons {
+	margin-top: 1px;
 }
 
 .add-node-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	padding: 2px 6px;
-	font-size: 11px;
+	padding: 1px 6px;
+	font-size: 10px;
 	cursor: pointer;
 	border: 1px dashed #ccc;
 	background: transparent;
 	color: inherit;
 	border-radius: 4px;
-	margin: 4px 2px;
+	margin: 2px 2px;
 }
 
 .add-node-btn:hover {
@@ -3164,8 +3215,10 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		container.innerHTML = '';
 
 		if (tree && tree.children) {
+			container.appendChild(createInsertionDropZone(tree.children, tree, 0));
 			tree.children.forEach(function(child, index) {
 				container.appendChild(createNodeElement(child, index, tree.children, tree));
+				container.appendChild(createInsertionDropZone(tree.children, tree, index + 1));
 			});
 		}
 
@@ -3238,6 +3291,19 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 		// Update action-bar summary
 		updateLintSummary(findings);
+	}
+
+	function createInsertionDropZone(parentArray, parentNode, insertIndex) {
+		const zone = document.createElement('div');
+		zone.className = 'drop-zone';
+		zone._parentArray = parentArray;
+		zone._parentNode = parentNode;
+		zone._insertIndex = insertIndex;
+		zone.addEventListener('dragover', handleInsertionZoneDragOver);
+		zone.addEventListener('dragenter', handleInsertionZoneDragEnter);
+		zone.addEventListener('dragleave', handleInsertionZoneDragLeave);
+		zone.addEventListener('drop', handleInsertionZoneDrop);
+		return zone;
 	}
 
 	// Update the action-bar lint summary from a findings array.
@@ -3577,9 +3643,16 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			childrenDiv.addEventListener('dragleave', handleChildrenDragLeave);
 			childrenDiv.addEventListener('drop', handleChildrenDrop);
 
-			if (node.children) {
+			if (!node.children) {
+				node.children = [];
+			}
+			childrenDiv.classList.toggle('is-empty', node.children.length === 0);
+
+			childrenDiv.appendChild(createInsertionDropZone(node.children, node, 0));
+			if (node.children.length > 0) {
 				node.children.forEach(function(child, childIndex) {
 					childrenDiv.appendChild(createNodeElement(child, childIndex, node.children, node));
+					childrenDiv.appendChild(createInsertionDropZone(node.children, node, childIndex + 1));
 				});
 			}
 
@@ -4173,6 +4246,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (!nodeEl) return;
 
 		isDragging = true;
+		document.body.classList.add('drag-active');
 		draggedNode = nodeEl;
 		draggedNodeData = nodeEl._nodeData;
 		draggedParentArray = nodeEl._parentArray;
@@ -4192,10 +4266,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			nodeEl.classList.remove('dragging');
 		}
 
-		// Clear all drag-over classes
-		document.querySelectorAll('.drag-over, .drag-over-above, .drag-over-below').forEach(function(el) {
-			el.classList.remove('drag-over', 'drag-over-above', 'drag-over-below');
-		});
+		document.body.classList.remove('drag-active');
+		clearDragIndicators();
 
 		draggedNode = null;
 		draggedNodeData = null;
@@ -4203,6 +4275,109 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		draggedParentNode = null;
 		draggedIndex = null;
 		setTimeout(function() { isDragging = false; }, 50);
+	}
+
+	function clearDragIndicators(exceptEl) {
+		document.querySelectorAll('.drag-over, .drag-over-above, .drag-over-below').forEach(function(el) {
+			if (exceptEl && el === exceptEl) return;
+			el.classList.remove('drag-over', 'drag-over-above', 'drag-over-below');
+		});
+	}
+
+	function findAdjacentInsertionZone(nodeEl, direction) {
+		if (!nodeEl) return null;
+		let sibling = direction === 'before' ? nodeEl.previousElementSibling : nodeEl.nextElementSibling;
+		while (sibling) {
+			if (sibling.classList && sibling.classList.contains('drop-zone')) {
+				return sibling;
+			}
+			sibling = direction === 'before' ? sibling.previousElementSibling : sibling.nextElementSibling;
+		}
+		return null;
+	}
+
+	function isRegexContainer(parentNode) {
+		return parentNode && parentNode.type === 'condition' &&
+			(parentNode.isRegexCondition || (parentNode.attributes && parentNode.attributes.regex));
+	}
+
+	function convertRegexNodeForParent(node, newParentNode) {
+		if (!node || node.type !== 'regex' || isRegexContainer(newParentNode)) {
+			return node;
+		}
+
+		node.type = 'condition';
+		node.attributes = {
+			field: (node.attributes && node.attributes.field) || '',
+			expression: (node.attributes && node.attributes.expression) || '',
+			break: ''
+		};
+		node.children = Array.isArray(node.children) ? node.children : [];
+		delete node.isRegexCondition;
+		return node;
+	}
+
+	function moveDraggedNodeTo(targetParentArray, targetParentNode, insertIndex) {
+		if (!draggedParentArray || !draggedNodeData) return false;
+
+		const removedNode = draggedParentArray.splice(draggedIndex, 1)[0];
+		if (!removedNode) return false;
+
+		const wasRegexNode = removedNode.type === 'regex';
+		let normalizedIndex = insertIndex;
+
+		if (targetParentArray === draggedParentArray && draggedIndex < insertIndex) {
+			normalizedIndex--;
+		}
+
+		normalizedIndex = Math.max(0, Math.min(normalizedIndex, targetParentArray.length));
+		targetParentArray.splice(normalizedIndex, 0, convertRegexNodeForParent(removedNode, targetParentNode));
+		preserveRegexConditionAfterMove(wasRegexNode, draggedParentNode);
+		return true;
+	}
+
+	function handleInsertionZoneDragOver(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		e.dataTransfer.dropEffect = 'move';
+		const zone = e.currentTarget;
+		clearDragIndicators(zone);
+		zone.classList.add('drag-over');
+	}
+
+	function handleInsertionZoneDragEnter(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		const zone = e.currentTarget;
+		clearDragIndicators(zone);
+		zone.classList.add('drag-over');
+	}
+
+	function handleInsertionZoneDragLeave(e) {
+		e.stopPropagation();
+		const zone = e.currentTarget;
+		if (zone && !zone.contains(e.relatedTarget)) {
+			zone.classList.remove('drag-over');
+		}
+	}
+
+	function handleInsertionZoneDrop(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		flushPendingHistorySnapshot();
+
+		const zone = e.currentTarget;
+		if (!zone || !zone._parentArray || !draggedNodeData) {
+			handleDragEnd(e);
+			return;
+		}
+
+		moveDraggedNodeTo(zone._parentArray, zone._parentNode, zone._insertIndex);
+		updateXmlFromTree();
+		renderTree();
+		updateGateConditionIndicators();
+		pushHistorySnapshot();
+		handleDragEnd(e);
 	}
 
 	function handleDragOver(e) {
@@ -4220,13 +4395,24 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Only conditions (including regex conditions) can accept children via drop
 		// Regex child elements (type='regex') are NOT containers
 		const isDropContainer = nodeEl._nodeData && nodeEl._nodeData.type === 'condition';
+		const topZone = findAdjacentInsertionZone(nodeEl, 'before');
+		const bottomZone = findAdjacentInsertionZone(nodeEl, 'after');
 
+		clearDragIndicators();
 		nodeEl.classList.remove('drag-over', 'drag-over-above', 'drag-over-below');
 
 		if (y < height * 0.25) {
-			nodeEl.classList.add('drag-over-above');
+			if (topZone) {
+				topZone.classList.add('drag-over');
+			} else {
+				nodeEl.classList.add('drag-over-above');
+			}
 		} else if (y > height * 0.75 || !isDropContainer) {
-			nodeEl.classList.add('drag-over-below');
+			if (bottomZone) {
+				bottomZone.classList.add('drag-over');
+			} else {
+				nodeEl.classList.add('drag-over-below');
+			}
 		} else {
 			// Drop inside condition
 			nodeEl.classList.add('drag-over');
@@ -4268,28 +4454,6 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Only conditions (including regex conditions) can accept children
 		// Regex child elements (type='regex') are NOT containers
 		const isDropContainer = targetNodeData.type === 'condition';
-
-		// Helper: is a given parent node a valid container for a <regex> node?
-		function isRegexContainer(parentNode) {
-			return parentNode && parentNode.type === 'condition' &&
-				(parentNode.isRegexCondition || (parentNode.attributes && parentNode.attributes.regex));
-		}
-
-		function convertRegexNodeForParent(node, newParentNode) {
-			if (!node || node.type !== 'regex' || isRegexContainer(newParentNode)) {
-				return node;
-			}
-
-			node.type = 'condition';
-			node.attributes = {
-				field: (node.attributes && node.attributes.field) || '',
-				expression: (node.attributes && node.attributes.expression) || '',
-				break: ''
-			};
-			node.children = Array.isArray(node.children) ? node.children : [];
-			delete node.isRegexCondition;
-			return node;
-		}
 
 		// Remove from original position
 		const removedNode = draggedParentArray.splice(draggedIndex, 1)[0];
@@ -4345,6 +4509,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Add visual feedback to the container
 		const childrenDiv = e.currentTarget;
 		if (childrenDiv && childrenDiv.classList.contains('dialplan-node-children')) {
+			clearDragIndicators(childrenDiv);
 			childrenDiv.classList.add('drag-over');
 		}
 	}
@@ -4354,6 +4519,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		e.stopPropagation();
 		const childrenDiv = e.currentTarget;
 		if (childrenDiv && childrenDiv.classList.contains('dialplan-node-children')) {
+			clearDragIndicators(childrenDiv);
 			childrenDiv.classList.add('drag-over');
 		}
 	}
