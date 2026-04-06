@@ -1,7 +1,7 @@
 <?php
 
 // application details
-$apps[$x]['name'] = "Visual Dialplan Manager";
+$apps[$x]['name'] = "Enhanced Dialplan Manager";
 $apps[$x]['uuid'] = "5c62a8c6-c363-4363-98fa-8357a99944ee";
 $apps[$x]['category'] = "Switch";
 $apps[$x]['subcategory'] = "";

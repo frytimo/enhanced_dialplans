@@ -1,11 +1,11 @@
 <?php
 
 $y = 0;
-$apps[$x]['menu'][$y]['title']['en-us'] = "Visual Dialplan Manager";
-$apps[$x]['menu'][$y]['title']['en-gb'] = "Visual Dialplan Manager";
+$apps[$x]['menu'][$y]['title']['en-us'] = "Enhanced Dialplan Manager";
+$apps[$x]['menu'][$y]['title']['en-gb'] = "Enhanced Dialplan Manager";
 $apps[$x]['menu'][$y]['title']['ar-eg'] = "مدير Visual Dialplan";
 $apps[$x]['menu'][$y]['title']['de-at'] = "Visual Wählplan Einstellungen";
-$apps[$x]['menu'][$y]['title']['de-ch'] = "Visual Dialplan Manager";
+$apps[$x]['menu'][$y]['title']['de-ch'] = "Enhanced Dialplan Manager";
 $apps[$x]['menu'][$y]['title']['de-de'] = "Visual Wählplan Einstellungen";
 $apps[$x]['menu'][$y]['title']['es-cl'] = "Gest. de Plan de Marcado";
 $apps[$x]['menu'][$y]['title']['es-mx'] = "Administrador de Planes de Marcado";
@@ -29,7 +29,7 @@ $apps[$x]['menu'][$y]['uuid'] = "1b0ae214-177d-4bcc-b7d7-6ac0cd7afde3";
 $apps[$x]['menu'][$y]['parent_uuid'] = "b94e8bd9-9eb5-e427-9c26-ff7a6c21552a";
 $apps[$x]['menu'][$y]['category'] = "internal";
 $apps[$x]['menu'][$y]['icon'] = "";
-$apps[$x]['menu'][$y]['path'] = "/app/visual_dialplans/dialplans.php";
+$apps[$x]['menu'][$y]['path'] = "/app/enhanced_dialplans/dialplans.php";
 $apps[$x]['menu'][$y]['order'] = "";
 $apps[$x]['menu'][$y]['groups'][] = "admin";
 $apps[$x]['menu'][$y]['groups'][] = "superadmin";

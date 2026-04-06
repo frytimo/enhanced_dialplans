@@ -1,7 +1,7 @@
-# FusionPBX Visual Dialplans
+# FusionPBX Enhanced Dialplans
 
 ## Overview
-The Visual Dialplans app is a part my extensions library for FusionPBX, designed to manage and visualize dialplan configurations. This app allows users to view, edit, and manage dialplan settings, making it easier to configure call routing and other telephony features.
+The Enhanced Dialplans app is a part my extensions library for FusionPBX, designed to manage and visualize dialplan configurations. This app allows users to view, edit, and manage dialplan settings, making it easier to configure call routing and other telephony features.
 
 ## Features
 - **Automatic synchronization**: Automatically synchronized XML file as you update the drag-and-drop elements of the dialplan.
@@ -13,7 +13,7 @@ The Visual Dialplans app is a part my extensions library for FusionPBX, designed
 - **Toggle Enabled/Disabled**: Users can enable or disable dialplans as needed.
 
 ## Usage
-1. **Access the App**: Navigate to the Visual Dialplans section in the FusionPBX menu under *Dialplans*.
+1. **Access the App**: Navigate to the Enhanced Dialplans section in the FusionPBX menu under *Dialplans*.
 2. **View Dialplans**: The app displays a list of all dialplans, with options to filter and search.
 3. **Edit Dialplans**: Click on a dialplan to edit its settings.
 4. **Add New Dialplans**: Use the "Add" button to create new dialplan configurations.
@@ -49,7 +49,7 @@ The Visual Dialplans app is a part my extensions library for FusionPBX, designed
 ## Migrate
 The original FusionPBX dialplan editor uses a hybrid approach where the xml file OR the dialplan details can determine the final xml values used depending on which one was last saved. This version uses a single authority of the xml file as the ultimate authority.
 
-The included tool: `php app/visual_dialplans/resources/migrate_to_unified.php` will ensure all dialplans can use the new visual tool.
+The included tool: `php app/enhanced_dialplans/resources/migrate_to_unified.php` will ensure all dialplans can use the new visual tool.
 
 Once the xml file is saved using this editor, the dialplan details are removed and xml file is the only source of editing the dialplan entry. It is assumed that you will not use the old one once this one is installed.
 
@@ -59,7 +59,7 @@ Once the xml file is saved using this editor, the dialplan details are removed a
 
 ```
 cd /var/www/fusionpbx/app
-git clone https://github.com/frytimo/visual_dialplans
+git clone https://github.com/frytimo/enhanced_dialplans
 cd /var/www/fusionpbx
 php core/upgrade/upgrade.php --schema
 php core/upgrade/upgrade.php --defaults
@@ -70,9 +70,9 @@ Logout and back in again
 
 ## Developers
 
-### Visual Dialplan Custom Lint Rules
+### Enhanced Dialplan Custom Lint Rules
 
-The Visual Dialplan editor can load lint rules from any app automatically.
+The Enhanced Dialplan editor can load lint rules from any app automatically.
 
 Rule file location per app:
 
@@ -80,7 +80,7 @@ Rule file location per app:
 
 How discovery works:
 
-- The loader in `app/visual_dialplans/dialplan_lint_rules_loader.php` scans all app folders for `resources/javascript/dialplan_lint_rules.js`.
+- The loader in `app/enhanced_dialplans/dialplan_lint_rules_loader.php` scans all app folders for `resources/javascript/dialplan_lint_rules.js`.
 - Each file is loaded in isolation and merged into the global `DialplanLintRules` array.
 - If one custom rule file has an error, it is ignored so the editor continues working.
 

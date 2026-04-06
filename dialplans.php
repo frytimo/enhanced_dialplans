@@ -609,7 +609,7 @@ if ($app_uuid == "c03b422e-13a8-bd1b-e42b-b6b9b4d27ce4" && $has_inbound_route_ad
 } else if ($app_uuid == "4b821450-926b-175a-af93-a03c441818b1" && $has_time_condition_add) {
 	$button_add_url = PROJECT_PATH . "/app/time_conditions/time_condition_edit.php";
 } else if ($has_dialplan_add) {
-	$button_add_url = PROJECT_PATH . "/app/visual_dialplans/dialplan_edit.php";
+	$button_add_url = PROJECT_PATH . "/app/enhanced_dialplans/dialplan_edit.php";
 }
 
 // build the action bar buttons
@@ -644,7 +644,7 @@ if (!empty($dialplans) && $has_show_toggle) {
 }
 $btn_xml = '';
 if ($has_dialplan_xml) {
-	$xml_link = PROJECT_PATH . '/app/visual_dialplans/dialplan_xml.php';
+	$xml_link = PROJECT_PATH . '/app/enhanced_dialplans/dialplan_xml.php';
 	$xml_params = [];
 	if (is_uuid($app_uuid)) {
 		$xml_params[] = 'app_uuid=' . urlencode($app_uuid);

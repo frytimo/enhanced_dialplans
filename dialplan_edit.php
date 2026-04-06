@@ -1917,7 +1917,7 @@ require_once "resources/header.php";
 	<div class="heading"><b><?php echo escape($text['title-dialplan_edit']); ?></b></div>
 	<div class="actions">
 		<?php
-		echo button::create(['type' => 'button', 'label' => $text['button-back'], 'icon' => $settings->get('theme', 'button_icon_back'), 'id' => 'btn_back', 'link' => $url->set_path('/app/visual_dialplans/dialplans.php')->unset_query_param('id')->build_absolute()]);
+		echo button::create(['type' => 'button', 'label' => $text['button-back'], 'icon' => $settings->get('theme', 'button_icon_back'), 'id' => 'btn_back', 'link' => $url->set_path('/app/enhanced_dialplans/dialplans.php')->unset_query_param('id')->build_absolute()]);
 		if ($action === 'update') {
 			echo button::create(['type' => 'submit', 'label' => $text['button-restore'] ?? 'Restore', 'icon' => ($settings->get('theme', 'button_icon_reset') ?: 'undo'), 'id' => 'btn_restore', 'name' => 'submit', 'value' => 'restore_original', 'style' => 'margin-left: 15px;']);
 		}
@@ -4684,7 +4684,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		initXmlChannel();
 		xmlPopoutWasEditing = false;
 
-		const url = '<?php echo PROJECT_PATH; ?>/app/visual_dialplans/dialplan_xml_popout.php?channel=' + encodeURIComponent(xmlChannelId);
+		const url = '<?php echo PROJECT_PATH; ?>/app/enhanced_dialplans/dialplan_xml_popout.php?channel=' + encodeURIComponent(xmlChannelId);
 		xmlPopoutWindow = window.open(url, 'dialplan-xml-popout', 'width=950,height=750,resizable=yes,scrollbars=yes');
 
 		// Poll for popup close (fallback in case beforeunload broadcast is blocked)
