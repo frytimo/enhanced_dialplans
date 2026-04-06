@@ -2854,11 +2854,11 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			form.appendChild(createFormField('Application', 'application', node.attributes.application || '', function(val) {
 				node.attributes.application = val;
 				updateXmlFromTree();
-			}));
+			}, null, null, true));
 			form.appendChild(createFormField('Data', 'data', node.attributes.data || '', function(val) {
 				node.attributes.data = val;
 				updateXmlFromTree();
-			}, null, 'field-data'));
+			}, null, 'field-data', true));
 			form.appendChild(createInlineRocker(node.attributes.inline || '', function(val) {
 				node.attributes.inline = val;
 				updateXmlFromTree();
@@ -3183,13 +3183,18 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	}
 
 	// Create form field element
-	function createFormField(label, name, value, onChange, options, cssClass) {
+	function createFormField(label, name, value, onChange, options, cssClass, usePlaceholder) {
 		const wrapper = document.createElement('div');
 		if (cssClass) wrapper.className = cssClass;
+		const usePlaceholderMode = usePlaceholder !== false;
+		const showLabel = !!options || !usePlaceholderMode;
+		const placeholderText = (!options && usePlaceholderMode) ? String(label || '').toUpperCase() : '';
 
-		const labelEl = document.createElement('label');
-		labelEl.textContent = label;
-		wrapper.appendChild(labelEl);
+		if (showLabel) {
+			const labelEl = document.createElement('label');
+			labelEl.textContent = label;
+			wrapper.appendChild(labelEl);
+		}
 
 		let input;
 		if (options) {
@@ -3216,6 +3221,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			input.type = 'text';
 			input.className = 'formfld';
 			input.value = value;
+			if (placeholderText) input.placeholder = placeholderText;
 			input.setAttribute('autocomplete', 'off');
 
 			const dropdown = document.createElement('div');
@@ -3351,6 +3357,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			input.type = 'text';
 			input.className = 'formfld';
 			input.value = value;
+			if (placeholderText) input.placeholder = placeholderText;
 			input.setAttribute('autocomplete', 'off');
 
 			const dropdown = document.createElement('div');
@@ -3459,6 +3466,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			input.type = 'text';
 			input.className = 'formfld';
 			input.value = value;
+			if (placeholderText) input.placeholder = placeholderText;
 
 			input.onchange = function() {
 				onChange(this.value);
