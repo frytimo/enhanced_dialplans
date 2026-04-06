@@ -283,6 +283,41 @@ var DialplanLintRules = (function () {
         },
 
         // ── Rule 7 ───────────────────────────────────────────────────────────
+        // A non-regex condition with no field and no expression always
+        // evaluates true. When it only wraps actions/anti-actions, the
+        // condition is redundant and should usually be removed.
+        {
+            id:          'condition-empty-check-with-actions',
+            severity:    'warning',
+            description: 'Condition has no field/expression and only wraps actions',
+            check: function (tree) {
+                var findings = [];
+                walkNodes(tree.children, function (node) {
+                    if (node.type !== 'condition' || node.enabled === false) return;
+                    if (node.isRegexCondition || (node.attributes && node.attributes.regex)) return;
+
+                    var field = String((node.attributes && node.attributes.field) || '').trim();
+                    var expression = String((node.attributes && node.attributes.expression) || '').trim();
+                    if (field || expression) return;
+
+                    var children = node.children || [];
+                    var hasEnabledActionChild = children.some(function (child) {
+                        return child &&
+                            (child.type === 'action' || child.type === 'anti-action') &&
+                            child.enabled !== false;
+                    });
+                    if (!hasEnabledActionChild) return;
+
+                    findings.push({
+                        node:    node,
+                        message: 'Condition has no field or expression, so it always matches and only wraps child actions'
+                    });
+                });
+                return findings;
+            }
+        },
+
+        // ── Rule 8 ───────────────────────────────────────────────────────────
         // In a regex condition using regex="any", an enabled <regex> child
         // with an empty expression will match trivially, causing the parent
         // condition to pass regardless of the other regex children.
@@ -316,7 +351,7 @@ var DialplanLintRules = (function () {
             }
         },
 
-        // ── Rule 8 ───────────────────────────────────────────────────────────
+        // ── Rule 9 ───────────────────────────────────────────────────────────
         // An enabled regex row with an empty expression matches trivially.
         // Under regex="all" or regex="xor" it contributes nothing useful;
         // under regex="any" it makes the parent condition always pass.
