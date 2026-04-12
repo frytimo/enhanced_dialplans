@@ -44,6 +44,7 @@ function dialplan_normalize_name($name): string {
 function dialplan_normalize_xml($xml): string {
 	$xml = str_replace(["\r\n", "\r"], "\n", (string) $xml);
 	$xml = preg_replace('/^\xEF\xBB\xBF/', '', $xml);
+	$xml = preg_replace('/\A(?:[ \t]*\n)+|(?:\n[ \t]*)+\z/', '', $xml);
 	$xml = preg_replace('/>\s+</', '><', $xml);
 	return trim($xml);
 }
