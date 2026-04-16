@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Enhanced Dialplans Fusor Redirect
+ * Enhanced Dialplans Redirector
  *
  * This class handles the redirection from the old dialplans page to the new enhanced dialplans page using Fusor.
  */
 
 if (class_exists('\frytimo\fusor\resources\classes\fusor')) {
-	class enhanced_dialplans_fusor_redirect {
+	class enhanced_dialplans_redirector {
 		/**
 		 * Redirect from /app/dialplans/dialplans.php to /app/enhanced_dialplans/dialplans.php.
 		 *
