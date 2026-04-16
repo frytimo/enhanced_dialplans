@@ -475,6 +475,14 @@ class url {
 	}
 
 	/**
+	 * Returns true when the URL currently has one or more query parameters.
+	 * @return bool
+	 */
+	public function has_parameters(): bool {
+		return !empty($this->params);
+	}
+
+	/**
 	 * Alias of set_query_param
 	 *
 	 * @param string $key Key is converted to lowercase
@@ -1001,6 +1009,19 @@ class url {
 	}
 
 	/**
+	 * Returns true when the key exists in either the URL query parameters
+	 * or the merged inbound request store.
+	 *
+	 * @param string $key Parameter name (case-insensitive).
+	 * @return bool
+	 */
+	public function has(string $key): bool {
+		$key = strtolower($key);
+
+		return $this->has_query_param($key) || isset($this->request_params[$key]);
+	}
+
+	/**
 	 * @deprecated Use post() instead.
 	 * @see url::post()
 	 */
@@ -1031,6 +1052,18 @@ class url {
 
 		// return the value if it exists, otherwise return the default
 		return isset($this->params[$key][$filter]) ? $this->params[$key][$filter] : $default;
+	}
+
+	/**
+	 * Returns true when the query parameter exists in the URL.
+	 *
+	 * @param string $key Query parameter name (case-insensitive).
+	 * @return bool
+	 */
+	public function has_query_param(string $key): bool {
+		$key = strtolower($key);
+
+		return isset($this->params[$key]);
 	}
 
 	/**
