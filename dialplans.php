@@ -174,13 +174,13 @@ if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 	switch ($action) {
 		case 'copy':
 			if ($has_dialplan_add) {
-				$obj = new dialplan;
+				$obj = new enhanced_dialplans;
 				$obj->copy($dialplans);
 			}
 			break;
 		case 'toggle':
 			if ($has_dialplan_edit) {
-				$obj = new dialplan;
+				$obj = new enhanced_dialplans;
 				$obj->toggle($dialplans);
 			}
 			break;
@@ -257,14 +257,14 @@ if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 			break;
 		case 'delete':
 			if ($has_dialplan_delete) {
-				$obj = new dialplan;
+				$obj = new enhanced_dialplans;
 				$obj->delete($dialplans);
 			}
 			break;
 	}
 
 	// redirect keeps all the params in the url automatically
-	url::redirect(dialplan::LIST_PAGE);
+	url::redirect(enhanced_dialplans::LIST_PAGE);
 	exit;
 }
 

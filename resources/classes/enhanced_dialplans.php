@@ -42,8 +42,8 @@ if (!class_exists('app')) {
 	}
 }
 
-//define the dialplan class
-class dialplan extends app implements clear_cache {
+//define the enhanced_dialplans class
+class enhanced_dialplans extends app implements clear_cache {
 
 	/**
 	 * declare constant variables
@@ -1526,5 +1526,4 @@ class dialplan extends app implements clear_cache {
 
 		}
 	} //method
-
 } //class
