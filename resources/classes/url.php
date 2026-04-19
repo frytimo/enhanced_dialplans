@@ -681,11 +681,33 @@ class url {
 
 		$scheme = $this->get_scheme();
 		if (!strlen($scheme) && $flags & self::BUILD_FORCE_SCHEME) {
-			$scheme = $_REQUEST['REQUEST_SCHEME'] ?? 'https';
+			$forwarded_proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+			if (!empty($forwarded_proto)) {
+				$scheme = trim(explode(',', (string) $forwarded_proto)[0]);
+			}
+			elseif (!empty($_SERVER['REQUEST_SCHEME'])) {
+				$scheme = (string) $_SERVER['REQUEST_SCHEME'];
+			}
+			elseif (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+				$scheme = 'https';
+			}
+			else {
+				$scheme = 'http';
+			}
 		}
 		$host = $this->get_host();
 		if (!strlen($host) && $flags & self::BUILD_FORCE_HOST) {
-			$host = $_SERVER['SERVER_NAME'];
+			$forwarded_host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+			if (!empty($forwarded_host)) {
+				$host = trim(explode(',', (string) $forwarded_host)[0]);
+			}
+			elseif (!empty($_SERVER['HTTP_HOST'])) {
+				$host = (string) $_SERVER['HTTP_HOST'];
+			}
+			else {
+				$host = (string) ($_SERVER['SERVER_NAME'] ?? 'localhost');
+			}
+			$host = preg_replace('/:\d+$/', '', $host);
 		}
 		$user = $this->get_username();
 		$port = $this->get_port();

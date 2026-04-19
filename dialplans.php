@@ -122,6 +122,7 @@ if (!class_exists('url')) {
 }
 
 $url = url::from_request($settings);
+$list_page_url = PROJECT_PATH . '/app/enhanced_dialplans/dialplans.php';
 
 // add multi-lingual support
 $text = (new text())->get();
@@ -146,7 +147,7 @@ $url->add_query_filter(function (string $key, mixed $value, callable $next) use 
 $app_uuid = $url->get('app_uuid', '');
 if (!empty($app_uuid) && is_uuid($app_uuid) && !in_array($app_uuid, $allowed_app_uuids)) {
 	// redirect without the invalid app_uuid (avoid loop from url::from_request() preserving it)
-	header('Location: dialplans.php');
+	header('Location: ' . $list_page_url);
 	exit;
 }
 
@@ -834,6 +835,7 @@ $template->assign('search', $search);
 $template->assign('order_by', $order_by);
 $template->assign('order', $order);
 $template->assign('show', $show);
+$template->assign('list_page_url', $list_page_url);
 $template->assign('paging_controls', $paging_controls);
 $template->assign('paging_controls_mini', $paging_controls_mini);
 $template->assign('token', $token);

@@ -60,7 +60,7 @@ if (!empty($_POST) && !empty($dialplan_uuid) && !empty($_REQUEST['app_uuid']) &&
 	$token = new token;
 	if (!$token->validate($_SERVER['PHP_SELF'])) {
 		message::add($text['message-invalid_token'], 'negative');
-		header('Location: dialplans.php');
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplans.php');
 		exit;
 	}
 
@@ -148,7 +148,7 @@ if (!empty($_POST) && !empty($dialplan_uuid) && !empty($_REQUEST['app_uuid']) &&
 	}
 
 	// redirect the user
-	header("Location: dialplan_edit.php?id=" . $dialplan_uuid . (is_uuid($app_uuid) ? "&app_uuid=" . $app_uuid : null));
+	header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . $dialplan_uuid . (is_uuid($app_uuid) ? '&app_uuid=' . $app_uuid : null));
 	exit;
 }
 
@@ -214,7 +214,7 @@ if (empty($dialplan_uuid)) {
 // $dialplan_xml = mb_convert_encoding($dialplan_xml, 'UTF-8');
 
 // add multi-lingual support
-$text = new text()->get();
+$text = (new text())->get();
 
 // load editor preferences/defaults
 $setting_size = !empty($settings->get('editor', 'font_size')) ? $settings->get('editor', 'font_size') : '12px';
@@ -289,7 +289,7 @@ echo "		}\n";
 echo "</style>\n";
 
 // show the content
-echo "<form method='post' name='frm' id='frm'>\n";
+echo "<form method='post' name='frm' id='frm' action='" . PROJECT_PATH . "/app/enhanced_dialplans/dialplan_xml.php?id=" . urlencode((string) $dialplan_uuid) . (is_uuid($app_uuid) ? "&app_uuid=" . urlencode((string) $app_uuid) : "") . "'>\n";
 
 echo "<div class='action_bar' id='action_bar'>\n";
 echo "	<div class='heading'><b>" . $text['title-dialplan_edit'] . " XML</b></div>\n";

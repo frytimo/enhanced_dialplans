@@ -1,5 +1,5 @@
 <div class='card'>
-<form id='form_list' method='post'>
+<form id='form_list' method='post' action='{$list_page_url|escape}'>
 <input type='hidden' id='app_uuid' name='app_uuid' value='{$app_uuid|escape}'>
 <input type='hidden' id='action' name='action' value=''>
 <input type='hidden' name='context' value="{$context|escape}">

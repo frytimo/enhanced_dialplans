@@ -225,7 +225,7 @@ if (
 
 	if (empty($dialplan_uuid) || !is_uuid($dialplan_uuid)) {
 		message::add('Unable to restore original XML: invalid dialplan id.', 'negative');
-		header('Location: dialplans.php');
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplans.php');
 		exit;
 	}
 
@@ -243,7 +243,7 @@ if (
 
 	if (!is_array($row) || @sizeof($row) == 0) {
 		message::add('Unable to restore original XML: dialplan not found.', 'negative');
-		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
 	}
 
@@ -251,14 +251,14 @@ if (
 	$original_file = dialplan_find_original_file_path($original_directory, $row['dialplan_order'], $row['dialplan_name']);
 	if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
 		message::add('Unable to restore original XML: matching original file not found.', 'negative');
-		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
 	}
 
 	$original_xml = file_get_contents($original_file);
 	if ($original_xml === false) {
 		message::add('Unable to restore original XML: failed to read original file.', 'negative');
-		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
 	}
 
@@ -275,7 +275,7 @@ if (
 	$cache->delete("dialplan:" . $dialplan_context_to_clear);
 
 	message::add('Restored original XML for this dialplan.');
-	header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+	header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 	exit;
 }
 
@@ -331,7 +331,7 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 			ajax_save_response(false, $text['message-invalid_xml'] ?? 'XML contains invalid or dangerous content.');
 		}
 		message::add($text['message-invalid_xml'] ?? 'XML contains invalid or dangerous content.', 'negative');
-		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
 	}
 
@@ -342,7 +342,7 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 			ajax_save_response(false, $field_errors['dialplan_name'], ['field_errors' => $field_errors]);
 		}
 		message::add($text['message-required'] . $text['label-name'], 'negative');
-		header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 		exit;
 	}
 
@@ -419,7 +419,7 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 	$save_message = $action === 'add' ? $text['message-add'] : $text['message-update'];
 
 	if ($is_ajax_save) {
-		$redirect_url = 'dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : '');
+		$redirect_url = PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : '');
 		ajax_save_response(true, $save_message, [
 			'dialplan_uuid' => $dialplan_uuid,
 			'app_uuid' => $app_uuid,
@@ -431,7 +431,7 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 	message::add($save_message);
 
 	// redirect
-	header('Location: dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
+	header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : ''));
 	exit;
 }
 
@@ -1972,7 +1972,7 @@ body.drag-active .drop-zone {
 }
 </style>
 
-<form method="post" name="frm" id="frm">
+<form method="post" name="frm" id="frm" action="<?php echo escape(PROJECT_PATH . '/app/enhanced_dialplans/dialplan_edit.php' . (!empty($dialplan_uuid) ? '?id=' . urlencode($dialplan_uuid) . (!empty($app_uuid) ? '&app_uuid=' . urlencode($app_uuid) : '') : '')); ?>">
 
 <div class="action_bar" id="action_bar">
 	<div class="heading"><b><?php echo escape($text['title-dialplan_edit']); ?></b></div>

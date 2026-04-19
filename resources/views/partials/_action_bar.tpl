@@ -7,7 +7,7 @@
 		{$btn_delete}
 		{$btn_restore}
 		{$btn_xml}
-		<form id='form_search' class='inline' method='get'>
+		<form id='form_search' class='inline' method='get' action='{$list_page_url|escape}'>
 			{if $has_dialplan_all}
 				{if $show == 'all'}
 					<input type='hidden' name='show' value='all'>

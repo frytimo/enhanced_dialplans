@@ -36,7 +36,7 @@ if (!permission_exists('dialplan_add')) {
 }
 
 // add multi-lingual support
-$text = new text()->get();
+$text = (new text())->get();
 
 // initialize the destinations object
 $destination = new destinations;
@@ -84,7 +84,7 @@ if (count($_POST) > 0 && empty($_POST["persistformvar"])) {
 	$token = new token;
 	if (!$token->validate($_SERVER['PHP_SELF'])) {
 		message::add($text['message-invalid_token'], 'negative');
-		header('Location: dialplans.php');
+		header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplans.php');
 		exit;
 	}
 
@@ -194,7 +194,7 @@ if (count($_POST) > 0 && empty($_POST["persistformvar"])) {
 
 	// send a message and redirect the user
 	message::add($text['message-update']);
-	header("Location: " . PROJECT_PATH . "/app/dialplans/dialplans.php");
+	header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/dialplans.php');
 	exit;
 }
 
@@ -239,7 +239,7 @@ if (count($_POST) > 0 && empty($_POST["persistformvar"])) {
 	require_once "resources/header.php";
 
 	// show the content
-	echo "<form method='post' name='frm' id='frm'>\n";
+	echo "<form method='post' name='frm' id='frm' action='" . PROJECT_PATH . "/app/enhanced_dialplans/dialplan_add.php'>\n";
 
 	echo "<div class='action_bar' id='action_bar'>\n";
 	echo "	<div class='heading'><b>" . $text['header-dialplan-add'] . "</b></div>\n";

@@ -1132,7 +1132,7 @@ class enhanced_dialplans extends app implements clear_cache {
 		$token = new token;
 		if (!$token->validate($_SERVER['PHP_SELF'])) {
 			message::add($text['message-invalid_token'], 'negative');
-			header('Location: ' . static::LIST_PAGE);
+			header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/' . static::LIST_PAGE);
 			exit;
 		}
 
@@ -1226,7 +1226,7 @@ class enhanced_dialplans extends app implements clear_cache {
 		$token = new token;
 		if (!$token->validate($_SERVER['PHP_SELF'])) {
 			message::add($text['message-invalid_token'], 'negative');
-			header('Location: ' . static::LIST_PAGE);
+			header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/' . static::LIST_PAGE);
 			exit;
 		}
 
@@ -1300,7 +1300,7 @@ class enhanced_dialplans extends app implements clear_cache {
 			$token = new token;
 			if (!$token->validate($_SERVER['PHP_SELF'])) {
 				message::add($text['message-invalid_token'], 'negative');
-				header('Location: ' . static::LIST_PAGE);
+				header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/' . static::LIST_PAGE);
 				exit;
 			}
 
@@ -1397,7 +1397,7 @@ class enhanced_dialplans extends app implements clear_cache {
 			$token = new token;
 			if (!$token->validate($_SERVER['PHP_SELF'])) {
 				message::add($text['message-invalid_token'], 'negative');
-				header('Location: ' . static::LIST_PAGE);
+				header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/' . static::LIST_PAGE);
 				exit;
 			}
 
