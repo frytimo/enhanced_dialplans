@@ -68,7 +68,7 @@
 		{$row._toggle_button}
 	</td>
 	{else}
-	<td class='center'>
+	<td class='center'{if $row._enabled_bold} style='font-weight:bold;'{/if}>
 		{$row.dialplan_enabled|escape}
 	</td>
 	{/if}

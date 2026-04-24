@@ -37,62 +37,9 @@ if (!(permission_exists('dialplan_view') || permission_exists('inbound_route_vie
 	exit;
 }
 
-function dialplan_normalize_name($name): string {
-	return preg_replace('/[^a-z0-9]/', '', strtolower((string) $name));
-}
+// Canonicalization + baseline-lookup helpers (shared with app_defaults.php).
+require_once __DIR__ . "/resources/functions/dialplan_canonicalize.php";
 
-function dialplan_normalize_xml($xml): string {
-	$xml = str_replace(["\r\n", "\r"], "\n", (string) $xml);
-	$xml = preg_replace('/^\xEF\xBB\xBF/', '', $xml);
-	$xml = preg_replace('/\A(?:[ \t]*\n)+|(?:\n[ \t]*)+\z/', '', $xml);
-	$xml = preg_replace('/>\s+</', '><', $xml);
-	return trim($xml);
-}
-
-function dialplan_build_original_file_map($dialplan_directory): array {
-	$file_map = [];
-	$paths = glob($dialplan_directory . '/*.xml') ?: [];
-	foreach ($paths as $path) {
-		$filename = basename($path);
-		if (preg_match('/^(\d+)_([^\.]+)\.xml$/', $filename, $matches)) {
-			$order = (int) $matches[1];
-			$file_map[$order][] = [
-				'path' => $path,
-				'name' => $matches[2],
-				'name_normalized' => dialplan_normalize_name($matches[2]),
-			];
-		}
-	}
-	return $file_map;
-}
-
-function dialplan_find_original_file($dialplan_order, $dialplan_name, $file_map): ?string {
-	$order = (int) $dialplan_order;
-	if (empty($file_map[$order]) || !is_array($file_map[$order])) {
-		return null;
-	}
-
-	$candidates = $file_map[$order];
-	if (count($candidates) === 1) {
-		return $candidates[0]['path'];
-	}
-
-	$name_normalized = dialplan_normalize_name($dialplan_name);
-	if ($name_normalized !== '') {
-		foreach ($candidates as $candidate) {
-			if ($candidate['name_normalized'] === $name_normalized) {
-				return $candidate['path'];
-			}
-		}
-		foreach ($candidates as $candidate) {
-			if (strpos($candidate['name_normalized'], $name_normalized) !== false || strpos($name_normalized, $candidate['name_normalized']) !== false) {
-				return $candidate['path'];
-			}
-		}
-	}
-
-	return $candidates[0]['path'];
-}
 
 $has_dialplan_add          = permission_exists('dialplan_add');
 $has_dialplan_all          = permission_exists('dialplan_all');
@@ -361,6 +308,8 @@ $sql  = "
 		dialplan_destination,
 		dialplan_continue,
 		dialplan_xml,
+		dialplan_hash,
+		dialplan_enabled_original,
 		dialplan_order,
 		dialplan_enabled,
 		dialplan_description
@@ -425,7 +374,21 @@ $dialplans = $database->select($sql, $parameters ?? null, 'all');
 unset($sql, $parameters);
 
 // compare current dialplans with original app XML files
-$original_dialplan_directory = dirname(__DIR__) . "/dialplans/resources/switch/conf/dialplan";
+//
+// Fast path: v_dialplans.dialplan_hash is populated during upgrade by
+// app/enhanced_dialplans/app_defaults.php with the canonical MD5 of the
+// shipped baseline that this row was installed from. When present, we only
+// have to canonicalize+hash the row's current dialplan_xml (in-memory cached)
+// and compare two strings. No filesystem parse of the shipped XML file is
+// needed.
+//
+// Slow path (fallback): when dialplan_hash is NULL (pre-upgrade install or
+// freshly added row that has not been through upgrade yet) OR when the fast
+// path reports a mismatch but the baseline file contains `{v_token}`
+// substitutions, fall back to dialplan_compare_status() which reads and
+// canonicalizes the shipped XML file and performs template-token-aware
+// regex matching.
+$original_dialplan_directory = dialplan_baseline_directory();
 $original_file_map = dialplan_build_original_file_map($original_dialplan_directory);
 $original_xml_cache = [];
 $all_original_status_match = !empty($dialplans);
@@ -457,6 +420,13 @@ $original_compare_excluded_app_uuids = [
 
 if (!empty($dialplans)) {
 	foreach ($dialplans as $x => $row) {
+		// Disabled dialplans are now compared as well — the XML canonicalizer
+		// preserves `enabled="false"` on <extension>, so a shipped-disabled
+		// entry matches cleanly when the user has left it disabled. Rows the
+		// user re-enabled (or disabled) relative to the baseline will show as
+		// 'diff' via the XML compare AND via the enabled-column bolding in
+		// the UI.
+
 		if (in_array(($row['app_uuid'] ?? ''), $original_compare_excluded_app_uuids, true)) {
 			$dialplans[$x]['original_xml_status'] = 'missing';
 			continue;
@@ -465,14 +435,38 @@ if (!empty($dialplans)) {
 		$original_file = dialplan_find_original_file($row['dialplan_order'], $row['dialplan_name'], $original_file_map);
 		$dialplans[$x]['original_xml_status'] = 'missing';
 
-		if (!empty($original_file) && is_file($original_file) && is_readable($original_file)) {
+		// Fast path: DB-cached baseline hash compared to current row's canonical hash.
+		$baseline_hash = $row['dialplan_hash'] ?? null;
+		$current_hash  = dialplan_canonical_hash($row['dialplan_xml'] ?? '');
+		if (!empty($baseline_hash) && $current_hash !== null) {
+			if ($baseline_hash === $current_hash) {
+				$dialplans[$x]['original_xml_status'] = 'match';
+			} else {
+				// Possible template-token substitution ({v_pin_number} etc.) —
+				// defer to the slow path which regex-matches those.
+				$dialplans[$x]['original_xml_status'] = 'diff';
+			}
+		}
+
+		// Slow path: no cached baseline hash OR fast path reported diff and the
+		// baseline may contain template tokens. Read and compare the file.
+		$needs_slow_path = empty($baseline_hash)
+			|| ($dialplans[$x]['original_xml_status'] === 'diff');
+		if ($needs_slow_path && !empty($original_file) && is_file($original_file) && is_readable($original_file)) {
 			if (!isset($original_xml_cache[$original_file])) {
 				$original_xml_cache[$original_file] = file_get_contents($original_file);
 			}
 			if ($original_xml_cache[$original_file] !== false) {
-				$original_xml = dialplan_normalize_xml($original_xml_cache[$original_file]);
-				$current_xml = dialplan_normalize_xml($row['dialplan_xml'] ?? '');
-				$dialplans[$x]['original_xml_status'] = ($original_xml === $current_xml) ? 'match' : 'diff';
+				// Only run the expensive template-aware compare if the fast
+				// path was missing OR the baseline actually contains tokens.
+				$run_compare = empty($baseline_hash)
+					|| strpos($original_xml_cache[$original_file], '{v_') !== false;
+				if ($run_compare) {
+					$status = dialplan_compare_status($original_xml_cache[$original_file], $row['dialplan_xml'] ?? '');
+					if ($status !== null) {
+						$dialplans[$x]['original_xml_status'] = $status;
+					}
+				}
 			}
 		}
 
@@ -807,8 +801,33 @@ foreach ($dialplans as &$row) {
 		]);
 	}
 	$row['_toggle_button'] = '';
+	// Bold the enabled label when the row's enabled state differs from the
+	// baseline declared by the shipped XML (dialplan_enabled_original,
+	// populated during upgrade).
+	$row_enabled        = !empty($row['dialplan_enabled']);
+	$baseline_enabled_raw = $row['dialplan_enabled_original'] ?? null;
+	$baseline_enabled     = null;
+	if ($baseline_enabled_raw !== null && $baseline_enabled_raw !== '') {
+		$baseline_enabled = in_array(
+			strtolower((string) $baseline_enabled_raw),
+			['1', 't', 'true', 'yes', 'on'],
+			true
+		);
+	}
+	$enabled_bold = ($baseline_enabled !== null && $baseline_enabled !== $row_enabled);
+	$row['_enabled_bold'] = $enabled_bold;
 	if ($has_row_toggle) {
-		$row['_toggle_button'] = button::create(['type' => 'submit', 'class' => 'link', 'label' => $text['label-' . ($row['dialplan_enabled'] ? 'true' : 'false')], 'title' => $text['button-toggle'], 'onclick' => "list_self_check('checkbox_" . $x . "'); list_action_set('toggle'); list_form_submit('form_list')"]);
+		$toggle_args = [
+			'type'    => 'submit',
+			'class'   => 'link',
+			'label'   => $text['label-' . ($row['dialplan_enabled'] ? 'true' : 'false')],
+			'title'   => $text['button-toggle'],
+			'onclick' => "list_self_check('checkbox_" . $x . "'); list_action_set('toggle'); list_form_submit('form_list')",
+		];
+		if ($enabled_bold) {
+			$toggle_args['style'] = 'font-weight:bold';
+		}
+		$row['_toggle_button'] = button::create($toggle_args);
 	}
 	$row['_edit_button'] = '';
 	if ($has_edit_column && $has_row_toggle && !empty($list_row_url)) {
