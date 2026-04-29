@@ -28,6 +28,7 @@ The Enhanced Dialplans app is a part my extensions library for FusionPBX, design
 - **dialplan_xml**: Export dialplans in XML format.
 
 ## Images and Snapshots
+- **Dialplan Main List**: ![Mismatched Dialplans](docs/images/detect_mismatch_dialplans.png)
 - **Visual Dialplan Editor**: ![Dialplan List](docs/images/Screenshot_20260327_235450.png)
 - **Syncronized XML View**:
   - ![Dialplan Edit](docs/images/Screenshot_20260327_235727.png)
