@@ -14,7 +14,7 @@
  *
  * Node structure:
  *   {
- *     type: 'condition' | 'action' | 'anti-action' | 'regex' | 'comment',
+ *     type: 'condition' | 'action' | 'anti-action' | 'regex' | 'comment' | 'log',
  *     attributes: { ... type-specific ... },
  *     children: [ <node>, ... ],  // only for conditions
  *     enabled: true | false,
@@ -24,11 +24,14 @@
  * Condition attributes (regular):  { field, expression, break }
  * Condition attributes (regex):    { regex, break }
  * Action/Anti-action attributes:   { application, data, inline }
+ * Log attributes:                  { level, text, inline }
  * Regex child attributes:          { field, expression }
  * Comment attributes:              { text }
  */
 var DialplanParser = (function () {
     'use strict';
+
+    var LOG_LEVELS = ['console', 'alert', 'crit', 'error', 'warning', 'notice', 'info', 'debug', 'warn', 'err', 'emerg', 'emergency'];
 
     /**
      * Parse an XML string representing a dialplan <extension> block into a tree.
@@ -297,12 +300,29 @@ var DialplanParser = (function () {
         }
 
         if (tag === 'action' || tag === 'anti-action') {
+            var application = el.getAttribute('application') || '';
+            var data = el.getAttribute('data') || '';
+            var inline = el.getAttribute('inline') || '';
+
+            if (tag === 'action' && application.toLowerCase() === 'log') {
+                var parsedLog = parseLogData(data);
+                return {
+                    type: 'log',
+                    attributes: {
+                        level: parsedLog.level,
+                        text: parsedLog.text,
+                        inline: inline
+                    },
+                    enabled: true
+                };
+            }
+
             return {
                 type: tag,
                 attributes: {
-                    application: el.getAttribute('application') || '',
-                    data:        el.getAttribute('data')        || '',
-                    inline:      el.getAttribute('inline')      || ''
+                    application: application,
+                    data:        data,
+                    inline:      inline
                 },
                 enabled: true
             };
@@ -385,6 +405,9 @@ var DialplanParser = (function () {
         if (node.type === 'action' || node.type === 'anti-action') {
             return actionToXml(node, indent);
         }
+        if (node.type === 'log') {
+            return logToXml(node, indent);
+        }
         if (node.type === 'regex') {
             return regexToXml(node, indent);
         }
@@ -463,6 +486,55 @@ var DialplanParser = (function () {
             return indent + '<!--' + tag + '-->\n';
         }
         return indent + tag + '\n';
+    }
+
+    function logToXml(node, indent) {
+        var level = String((node.attributes && node.attributes.level) || 'debug').toLowerCase();
+        level = normalizeLogLevel(level);
+        if (LOG_LEVELS.indexOf(level) === -1) {
+            level = 'info';
+        }
+        var text = String((node.attributes && node.attributes.text) || '');
+        var data = level.toUpperCase() + (text ? ' ' + text : '');
+        var inline = (node.attributes && node.attributes.inline) || '';
+        var attrs = ' application="log" data="' + escapeAttr(data) + '"';
+        if (inline) {
+            attrs += ' inline="' + escapeAttr(inline) + '"';
+        }
+        var tag = '<action' + attrs + '/>';
+        if (node.enabled === false) {
+            return indent + '<!--' + tag + '-->\n';
+        }
+        return indent + tag + '\n';
+    }
+
+    function parseLogData(data) {
+        var raw = String(data || '').trim();
+        if (!raw) {
+            return { level: 'debug', text: '' };
+        }
+
+        var match = raw.match(/^([A-Za-z]+)\s*(.*)$/);
+        if (!match) {
+            return { level: 'debug', text: raw };
+        }
+
+        var level = normalizeLogLevel(String(match[1] || '').toLowerCase());
+        if (LOG_LEVELS.indexOf(level) === -1) {
+            return { level: 'debug', text: raw };
+        }
+
+        return {
+            level: level,
+            text: String(match[2] || '').trim()
+        };
+    }
+
+    function normalizeLogLevel(level) {
+        if (level === 'err') return 'error';
+        if (level === 'warn') return 'warning';
+        if (level === 'emergency') return 'emerg';
+        return level;
     }
 
     function commentToXml(node, indent) {

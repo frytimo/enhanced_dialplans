@@ -778,6 +778,7 @@ require_once "resources/header.php";
 
 .dialplan-node.condition,
 .dialplan-node.action,
+.dialplan-node.log,
 .dialplan-node.anti-action,
 .dialplan-node.regex,
 .dialplan-node.comment {
@@ -830,9 +831,19 @@ require_once "resources/header.php";
 	border-color: <?php echo $node_color_action; ?>;
 }
 
+.dialplan-node-drag-zone.type-log {
+	background: #e57373;
+	border-color: #e57373;
+}
+
 .dialplan-node-drag-zone.type-action:hover {
 	background: <?php echo $node_color_action_hover; ?>;
 	border-color: <?php echo $node_color_action_hover; ?>;
+}
+
+.dialplan-node-drag-zone.type-log:hover {
+	background: #ef5350;
+	border-color: #ef5350;
 }
 
 .dialplan-node-drag-zone.type-anti-action {
@@ -1469,9 +1480,20 @@ body.drag-active .drop-zone {
 	color: <?= $node_color_action ?>;
 }
 
+.add-node-btn.type-log {
+	background: rgba(239, 83, 80, 0.12);
+	border-color: rgba(239, 83, 80, 0.35);
+	color: #d32f2f;
+}
+
 .add-node-btn.type-action:hover {
 	background: <?= dialplan_hex_to_rgba($node_color_action, 0.18) ?>;
 	border-color: <?= $node_color_action ?>;
+}
+
+.add-node-btn.type-log:hover {
+	background: rgba(239, 83, 80, 0.2);
+	border-color: #ef5350;
 }
 
 .add-node-btn.type-anti-action {
@@ -1515,6 +1537,15 @@ body.drag-active .drop-zone {
 .add-node-btn i,
 .add-node-btn:hover i {
 	color: #000 !important;
+}
+
+.add-node-separator {
+	display: inline-block;
+	width: 0;
+	height: 16px;
+	margin: 0 10px;
+	border-left: 1px dashed rgba(120, 120, 120, 0.7);
+	vertical-align: middle;
 }
 
 /* Lint badge — small severity indicator attached to each node */
@@ -2228,8 +2259,12 @@ body.drag-active .drop-zone {
 						<button type="button" class="add-node-btn type-regex-condition" onclick="addNode('regex-condition');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-regex_condition'] ?? 'Regex'; ?>
 						</button>
+						<span class="add-node-separator" aria-hidden="true"></span>
 						<button type="button" class="add-node-btn type-comment" onclick="addNode('comment');">
 							<i class="fas fa-plus"></i> <?php echo $text['option-comment'] ?? 'Comment'; ?>
+						</button>
+						<button type="button" class="add-node-btn type-log" onclick="addNode('log');">
+							<i class="fas fa-plus"></i> <?php echo $text['label-log'] ?? 'Log'; ?>
 						</button>
 					</div>
 				</div>
@@ -2560,6 +2595,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 		applyMetadataState(snapshot.meta);
 		tree = snapshot.tree ? JSON.parse(snapshot.tree) : null;
+		ensureTreeExtensionUuid(tree);
 		if (tree && tree.attributes) {
 			tree.attributes.name = val('dialplan_name');
 			tree.attributes.continue = val('dialplan_continue') || 'false';
@@ -2594,6 +2630,29 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		historyStack = [];
 		historyIndex = -1;
 		pushHistorySnapshot();
+	}
+
+	function getCurrentDialplanUuid() {
+		const idInput = document.querySelector('input[name="dialplan_uuid"]');
+		const hiddenUuid = idInput && typeof idInput.value === 'string' ? idInput.value.trim() : '';
+		if (hiddenUuid) {
+			return hiddenUuid;
+		}
+
+		const queryId = new URLSearchParams(window.location.search).get('id');
+		return queryId ? queryId.trim() : '';
+	}
+
+	function ensureTreeExtensionUuid(extensionTree) {
+		if (!extensionTree || extensionTree.type !== 'extension') {
+			return;
+		}
+		const currentUuid = getCurrentDialplanUuid();
+		if (!currentUuid) {
+			return;
+		}
+		extensionTree.attributes = extensionTree.attributes || {};
+		extensionTree.attributes.uuid = currentUuid;
 	}
 
 	window.undoHistory = function() {
@@ -2988,7 +3047,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			// Create empty extension
 			tree = {
 				type: 'extension',
-				attributes: { name: '', continue: 'false', uuid: '' },
+				attributes: { name: '', continue: 'false', uuid: getCurrentDialplanUuid() },
 				children: []
 			};
 			renderTree();
@@ -3082,7 +3141,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (!xml.trim()) {
 			tree = {
 				type: 'extension',
-				attributes: { name: document.getElementById('dialplan_name').value || '', continue: 'false', uuid: '' },
+				attributes: { name: document.getElementById('dialplan_name').value || '', continue: 'false', uuid: getCurrentDialplanUuid() },
 				children: []
 			};
 			renderTree();
@@ -3097,6 +3156,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const result = DialplanParser.parseXmlToTree(xml);
 		if (result.success) {
 			tree = result.tree;
+			ensureTreeExtensionUuid(tree);
 			renderTree();
 			setSyncState('synced');
 			if (pendingXmlHistoryCommit && !historyRestoreInProgress) {
@@ -3114,7 +3174,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (!xml.trim()) {
 			tree = {
 				type: 'extension',
-				attributes: { name: document.getElementById('dialplan_name').value || '', continue: 'false', uuid: '' },
+				attributes: { name: document.getElementById('dialplan_name').value || '', continue: 'false', uuid: getCurrentDialplanUuid() },
 				children: []
 			};
 			renderTree();
@@ -3141,6 +3201,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 			if (result.success) {
 				tree = result.tree;
+				ensureTreeExtensionUuid(tree);
 				renderTree();
 				setSyncState('synced');
 
@@ -3180,6 +3241,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 					enabled: true
 				});
 			}
+		} else if (actualType === 'log') {
+			newNode.attributes = { level: 'debug', text: '', inline: '' };
 		} else if (actualType === 'comment') {
 			newNode.attributes = { text: '' };
 		} else {
@@ -3481,6 +3544,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			typeLabel.textContent = 'RegEx';
 		} else if (node.type === 'anti-action') {
 			typeLabel.textContent = 'Anti';
+		} else if (node.type === 'log') {
+			typeLabel.textContent = 'Log';
 		} else if (node.type === 'comment') {
 			typeLabel.textContent = 'Comment';
 		} else {
@@ -3590,6 +3655,21 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 				node.attributes.inline = val;
 				updateXmlFromTree();
 			}));
+		} else if (node.type === 'log') {
+			const logLevels = ['console', 'alert', 'crit', 'emerg', 'error', 'warning', 'notice', 'info', 'debug'];
+			const level = (node.attributes.level || 'debug').toLowerCase();
+			form.appendChild(createFormField('Level', 'level', level, function(val) {
+				node.attributes.level = val || 'debug';
+				updateXmlFromTree();
+			}, logLevels));
+			form.appendChild(createFormField('Message', 'text', node.attributes.text || '', function(val) {
+				node.attributes.text = val;
+				updateXmlFromTree();
+			}, null, 'field-data'));
+			form.appendChild(createInlineRocker(node.attributes.inline || '', function(val) {
+				node.attributes.inline = val;
+				updateXmlFromTree();
+			}));
 		} else if (node.type === 'comment') {
 			form.appendChild(createFormField('Comment', 'text', node.attributes.text || '', function(val) {
 				node.attributes.text = val;
@@ -3676,30 +3756,31 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			addBtns.className = 'add-node-buttons';
 
 			// Define button configs: [type, displayName, actualType, isRegexCondition]
-			const buttonConfigs = [];
+			const primaryButtonConfigs = [];
+			const secondaryButtonConfigs = [
+				['comment', 'Comment', 'comment', false],
+				['log', 'Log', 'log', false]
+			];
 
-			// Both can have actions and anti-actions
-			buttonConfigs.push(['action', 'Action', 'action', false]);
-			buttonConfigs.push(['anti-action', 'Anti-action', 'anti-action', false]);
-			buttonConfigs.push(['comment', 'Comment', 'comment', false]);
-
-			// Both can have nested conditions
-			buttonConfigs.push(['condition', 'Condition', 'condition', false]);
+			// Primary actions/functions
+			primaryButtonConfigs.push(['action', 'Action', 'action', false]);
+			primaryButtonConfigs.push(['anti-action', 'Anti-action', 'anti-action', false]);
+			primaryButtonConfigs.push(['condition', 'Condition', 'condition', false]);
 
 			if (isRegexCondition) {
 				// Inside a regex condition, "Regex Cond" creates another regex-condition
 				// wrapper with an initial regex child.
-				buttonConfigs.push(['regex-condition', 'Regex Cond', 'condition', true]);
+				primaryButtonConfigs.push(['regex-condition', 'Regex Cond', 'condition', true]);
 				// Regex condition can have regex children.
-				buttonConfigs.push(['regex', 'Regex Field', 'regex', false]);
+				primaryButtonConfigs.push(['regex', 'Regex Field', 'regex', false]);
 			}
 
 			// Only regular conditions can create nested regex-condition wrappers.
 			if (!isRegexCondition) {
-				buttonConfigs.push(['regex-condition', 'Regex Cond', 'condition', true]);
+				primaryButtonConfigs.push(['regex-condition', 'Regex Cond', 'condition', true]);
 			}
 
-			buttonConfigs.forEach(function(config) {
+			function appendAddNodeButton(config) {
 				const btnType = config[0];
 				const displayName = config[1];
 				const actualType = config[2];
@@ -3727,6 +3808,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 								enabled: true
 							});
 						}
+					} else if (actualType === 'log') {
+						newNode.attributes = { level: 'debug', text: '', inline: '' };
 					} else if (actualType === 'regex') {
 						// Regex child element - just field/expression, no children
 						newNode.attributes = { field: '', expression: '' };
@@ -3742,7 +3825,17 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 					pushHistorySnapshot();
 				};
 				addBtns.appendChild(btn);
-			});
+			}
+
+			primaryButtonConfigs.forEach(appendAddNodeButton);
+
+			if (secondaryButtonConfigs.length) {
+				const separator = document.createElement('span');
+				separator.className = 'add-node-separator';
+				separator.setAttribute('aria-hidden', 'true');
+				addBtns.appendChild(separator);
+				secondaryButtonConfigs.forEach(appendAddNodeButton);
+			}
 
 			div.appendChild(addBtns);
 		}
@@ -4620,6 +4713,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	// Update XML from tree (UI -> XML sync)
 	function updateXmlFromTree() {
 		if (!tree) return;
+		ensureTreeExtensionUuid(tree);
 
 		// Update extension attributes from form
 		tree.attributes.name = document.getElementById('dialplan_name').value || '';
@@ -4651,7 +4745,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		if (!tree) {
 			tree = {
 				type: 'extension',
-				attributes: { name: '', continue: 'false', uuid: '' },
+				attributes: { name: '', continue: 'false', uuid: getCurrentDialplanUuid() },
 				children: []
 			};
 		}
@@ -4675,6 +4769,10 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 					enabled: true
 				});
 			}
+		} else if (actualType === 'log') {
+			newNode.attributes = { level: 'debug', text: '', inline: '' };
+		} else if (actualType === 'comment') {
+			newNode.attributes = { text: '' };
 		} else {
 			newNode.attributes = { application: '', data: '', inline: '' };
 		}
