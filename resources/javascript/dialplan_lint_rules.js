@@ -381,6 +381,30 @@ var DialplanLintRules = (function () {
                 });
                 return findings;
             }
+        },
+
+        // ── Rule 10 ──────────────────────────────────────────────────────────
+        // A log action with no message is usually not useful in troubleshooting,
+        // because it records only severity without context.
+        {
+            id:          'log-empty-message',
+            severity:    'warning',
+            description: 'Log action has no message text',
+            check: function (tree) {
+                var findings = [];
+                walkNodes(tree.children, function (node) {
+                    if (node.type !== 'log' || node.enabled === false) return;
+
+                    var message = String((node.attributes && node.attributes.text) || '').trim();
+                    if (message) return;
+
+                    findings.push({
+                        node: node,
+                        message: 'Log action has an empty message; add text so the log entry is actionable'
+                    });
+                });
+                return findings;
+            }
         }
 
     ];
