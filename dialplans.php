@@ -116,6 +116,229 @@ $has_restore_action = (
 	$has_dialplan_edit
 );
 
+// process preview request (side-by-side XML compare overlay)
+$preview_dialplan_uuid = $url->get('preview_dialplan_uuid', '');
+if (!empty($preview_dialplan_uuid)) {
+	if (!is_uuid($preview_dialplan_uuid)) {
+		http_response_code(400);
+		echo "Invalid dialplan UUID.";
+		exit;
+	}
+
+	$sql = "select dialplan_uuid, domain_uuid, app_uuid, dialplan_context, dialplan_name, dialplan_number, dialplan_order, dialplan_xml, dialplan_hash from v_dialplans ";
+	$sql .= "where dialplan_uuid = :dialplan_uuid ";
+	if (!$has_dialplan_all) {
+		$sql .= "and (domain_uuid = :domain_uuid or domain_uuid is null) ";
+	}
+	$parameters = [];
+	$parameters['dialplan_uuid'] = $preview_dialplan_uuid;
+	if (!$has_dialplan_all) {
+		$parameters['domain_uuid'] = $domain_uuid;
+	}
+	$row = $database->select($sql, $parameters, 'row');
+	unset($sql, $parameters);
+
+	if (!is_array($row) || @sizeof($row) == 0) {
+		http_response_code(404);
+		echo "Dialplan not found or access denied.";
+		exit;
+	}
+
+	$original_compare_excluded_app_uuids = [
+		'a6a7c4c5-340a-43ce-bcbc-2ed9bab8659d', // bridges
+		'9ed63276-e085-4897-839c-4f2e36d92d6c', // call block
+		'efc11f6b-ed73-9955-4d4d-3a1bed75a056', // call broadcast
+		'95788e50-9500-079e-2807-fd530b0ea370', // call centers
+		'4a085c51-7635-ff03-f67b-86e834422848', // call detail records (xml cdr)
+		'b1b70f85-6b42-429b-8c5a-60c8b02b7d14', // call flows
+		'19806921-e8ed-dcff-b325-dd3e5da4959d', // call forward
+		'56165644-598d-4ed8-be01-d960bcb8ffed', // call recordings
+		'8d083f5a-f726-42a8-9ffa-8d28f848f10e', // conference centers
+		'e1ad84a2-79e1-450c-a5b1-7507a043e048', // conference controls
+		'c33e2c2a-847f-44c1-8c0d-310df5d65ba9', // conference profiles
+		'b81412e8-7253-91f4-e48e-42fc2c9a38d9', // conferences
+		'24108154-4ac3-1db6-1551-4731703a4440', // fax
+		'a5788e9b-58bc-bd1b-df59-fff5d51253ab', // ivr menus
+		'f5210fba-337d-4e05-86b6-7a2fd9dc7c42', // follow me
+		'5c6f597c-9b78-11e4-89d3-123b93f75cba', // phrases
+		'16589224-c876-aeb3-f59f-523a1c0801f7', // queues (fifo)
+		'83913217-c7a2-9e90-925d-a866eb40b60e', // recordings
+		'1d61fb65-1eec-bc73-a6ee-a6203b4fe6f2', // ring groups
+		'4b821450-926b-175a-af93-a03c441818b1', // time conditions
+		'b523c2d2-64cd-46f1-9520-ca4b4098e044', // voicemails
+	];
+
+	if (in_array(($row['app_uuid'] ?? ''), $original_compare_excluded_app_uuids, true)) {
+		echo "Preview is not available for this app-managed dialplan entry.";
+		exit;
+	}
+
+	$original_file_map = dialplan_build_original_file_map(dialplan_baseline_directory());
+	$original_file = dialplan_find_original_file($row['dialplan_order'] ?? null, $row['dialplan_name'] ?? '', $original_file_map);
+
+	if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
+		echo "No matching baseline XML file found for this dialplan.";
+		exit;
+	}
+
+	$original_xml = file_get_contents($original_file);
+	if ($original_xml === false) {
+		echo "Failed to read baseline XML file.";
+		exit;
+	}
+
+	$current_xml = (string) ($row['dialplan_xml'] ?? '');
+	$current_lines = preg_split('/\r\n|\n|\r/', $current_xml);
+	$original_lines = preg_split('/\r\n|\n|\r/', $original_xml);
+	if ($current_lines === false) {
+		$current_lines = [$current_xml];
+	}
+	if ($original_lines === false) {
+		$original_lines = [$original_xml];
+	}
+
+	$current_states = array_fill(0, count($current_lines), 'same');
+	$original_states = array_fill(0, count($original_lines), 'same');
+
+	$ops = [];
+	$n = count($current_lines);
+	$m = count($original_lines);
+	$max_matrix_cells = 200000;
+	if ($n * $m <= $max_matrix_cells) {
+		$dp = array_fill(0, $n + 1, array_fill(0, $m + 1, 0));
+		for ($i = 1; $i <= $n; $i++) {
+			for ($j = 1; $j <= $m; $j++) {
+				if ($current_lines[$i - 1] === $original_lines[$j - 1]) {
+					$dp[$i][$j] = $dp[$i - 1][$j - 1] + 1;
+				}
+				else {
+					$dp[$i][$j] = max($dp[$i - 1][$j], $dp[$i][$j - 1]);
+				}
+			}
+		}
+
+		$i = $n;
+		$j = $m;
+		while ($i > 0 || $j > 0) {
+			if ($i > 0 && $j > 0 && $current_lines[$i - 1] === $original_lines[$j - 1]) {
+				$ops[] = ['type' => 'equal', 'i' => $i - 1, 'j' => $j - 1];
+				$i--;
+				$j--;
+			}
+			else if ($i > 0 && ($j == 0 || $dp[$i - 1][$j] >= $dp[$i][$j - 1])) {
+				$ops[] = ['type' => 'delete', 'i' => $i - 1];
+				$i--;
+			}
+			else {
+				$ops[] = ['type' => 'insert', 'j' => $j - 1];
+				$j--;
+			}
+		}
+		$ops = array_reverse($ops);
+	}
+	else {
+		$max = max($n, $m);
+		for ($i = 0; $i < $max; $i++) {
+			if ($i < $n && $i < $m) {
+				if ($current_lines[$i] === $original_lines[$i]) {
+					$ops[] = ['type' => 'equal', 'i' => $i, 'j' => $i];
+				}
+				else {
+					$ops[] = ['type' => 'delete', 'i' => $i];
+					$ops[] = ['type' => 'insert', 'j' => $i];
+				}
+			}
+			else if ($i < $n) {
+				$ops[] = ['type' => 'delete', 'i' => $i];
+			}
+			else {
+				$ops[] = ['type' => 'insert', 'j' => $i];
+			}
+		}
+	}
+
+	$k = 0;
+	$ops_count = count($ops);
+	while ($k < $ops_count) {
+		if ($ops[$k]['type'] === 'equal') {
+			$k++;
+			continue;
+		}
+
+		$current_run = [];
+		$original_run = [];
+		while ($k < $ops_count && $ops[$k]['type'] !== 'equal') {
+			if ($ops[$k]['type'] === 'delete') {
+				$current_run[] = $ops[$k]['i'];
+			}
+			else if ($ops[$k]['type'] === 'insert') {
+				$original_run[] = $ops[$k]['j'];
+			}
+			$k++;
+		}
+
+		$paired = min(count($current_run), count($original_run));
+		for ($p = 0; $p < $paired; $p++) {
+			$current_states[$current_run[$p]] = 'changed';
+			$original_states[$original_run[$p]] = 'changed';
+		}
+		for ($p = $paired; $p < count($current_run); $p++) {
+			$current_states[$current_run[$p]] = 'current-only';
+		}
+		for ($p = $paired; $p < count($original_run); $p++) {
+			$original_states[$original_run[$p]] = 'original-only';
+		}
+	}
+
+	$render_preview_lines = function(array $lines, array $states): string {
+		$html = '';
+		foreach ($lines as $index => $line) {
+			$line_state = $states[$index] ?? 'same';
+			$class = 'dialplan-preview-line';
+			if ($line_state === 'changed') {
+				$class .= ' is-changed';
+			}
+			else if ($line_state === 'current-only') {
+				$class .= ' is-current-only';
+			}
+			else if ($line_state === 'original-only') {
+				$class .= ' is-original-only';
+			}
+			$html .= "<div class='" . $class . "'><span class='dialplan-preview-line-number'>" . ($index + 1) . "</span><span class='dialplan-preview-line-code'>" . htmlspecialchars((string) $line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</span></div>";
+		}
+		if ($html === '') {
+			$html = "<div class='dialplan-preview-line'><span class='dialplan-preview-line-number'>1</span><span class='dialplan-preview-line-code'></span></div>";
+		}
+		return $html;
+	};
+
+	$dialog_header = 'XML Comparison';
+	$dialplan_title = trim(((string) ($row['dialplan_name'] ?? '')) . (!empty($row['dialplan_number']) ? ' (' . ((string) $row['dialplan_number']) . ')' : ''));
+	$left_title = 'Current XML';
+	$right_title = 'Original XML';
+
+	echo "<div class='dialplan-preview-header'>";
+	echo "\t<div class='title'>" . escape($dialog_header) . "</div>";
+	echo "\t<div class='dialplan-preview-meta'>";
+	echo "\t\t<strong>" . escape($dialplan_title) . "</strong><br>";
+	echo "\t\tContext: " . escape((string) ($row['dialplan_context'] ?? ''));
+	echo "\t</div>";
+	echo "</div>";
+	echo "<div class='dialplan-preview-grid'>";
+	echo "\t<div class='dialplan-preview-pane'>";
+	echo "\t\t<div class='dialplan-preview-pane-title'>" . escape($left_title) . "</div>";
+	echo "\t\t<div class='dialplan-preview-xml' data-side='current'>" . $render_preview_lines($current_lines, $current_states) . "</div>";
+	echo "\t</div>";
+	echo "\t<div class='dialplan-preview-splitter' aria-hidden='true'></div>";
+	echo "\t<div class='dialplan-preview-pane'>";
+	echo "\t\t<div class='dialplan-preview-pane-title'>" . escape($right_title) . "</div>";
+	echo "\t\t<div class='dialplan-preview-xml' data-side='original'>" . $render_preview_lines($original_lines, $original_states) . "</div>";
+	echo "\t</div>";
+	echo "</div>";
+
+	exit;
+}
+
 // process the http post data by action
 if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 	// process action
@@ -789,6 +1012,18 @@ foreach ($dialplans as &$row) {
 	);
 	$row['_has_toggle']    = $has_row_toggle;
 	$row['_original_status'] = $row['original_xml_status'] ?? 'missing';
+	$row['_preview_button'] = '';
+	if ($row['_original_status'] === 'diff') {
+		$preview_link = $list_page_url . '?preview_dialplan_uuid=' . urlencode($row['dialplan_uuid'] ?? '');
+		$row['_preview_button'] = button::create([
+			'type' => 'button',
+			'class' => 'link',
+			'icon' => 'eye',
+			'title' => 'Preview XML differences',
+			'style' => 'color: #0f766e; padding: 0; min-width: 0; margin: 0 4px 0 0;',
+			'onclick' => "dialplan_preview_open('" . escape($preview_link) . "', " . $x . ", " . ($has_row_toggle ? 'true' : 'false') . "); return false;",
+		]);
+	}
 	$row['_restore_button'] = '';
 	if ($row['_original_status'] === 'diff' && $has_row_toggle) {
 		$row['_restore_button'] = button::create([
