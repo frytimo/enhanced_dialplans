@@ -39,6 +39,9 @@
 		{if $row._original_status == 'match'}
 		<span title='Matches most recent version' style='color: #16a34a;'><i class='fas fa-check-circle' aria-hidden='true'></i></span>
 		{elseif $row._original_status == 'diff'}
+		{if $row._preview_button}
+		{$row._preview_button}
+		{/if}
 		{if $row._restore_button}
 		{$row._restore_button}
 		{else}
