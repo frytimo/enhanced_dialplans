@@ -128,7 +128,11 @@ if (!empty($preview_dialplan_uuid)) {
 	$sql = "select dialplan_uuid, domain_uuid, app_uuid, dialplan_context, dialplan_name, dialplan_number, dialplan_order, dialplan_xml, dialplan_hash from v_dialplans ";
 	$sql .= "where dialplan_uuid = :dialplan_uuid ";
 	if (!$has_dialplan_all) {
-		$sql .= "and (domain_uuid = :domain_uuid or domain_uuid is null) ";
+		$sql .= "and (domain_uuid = :domain_uuid ";
+		if ($has_dialplan_global) {
+			$sql .= "or domain_uuid is null ";
+		}
+		$sql .= ") ";
 	}
 	$parameters = [];
 	$parameters['dialplan_uuid'] = $preview_dialplan_uuid;
@@ -470,7 +474,9 @@ if ($show == "all" && $has_dialplan_all) {
 	$sql .= "where true ";
 } else {
 	$sql .= "where (domain_uuid = :domain_uuid ";
-	$sql .= "or domain_uuid is null ";
+	if ($has_dialplan_global) {
+		$sql .= "or domain_uuid is null ";
+	}
 	$sql .= ") ";
 	$parameters['domain_uuid'] = $domain_uuid;
 }
@@ -544,7 +550,9 @@ if ($show == "all" && $has_dialplan_all) {
 } else {
 	$sql .= "where (";
 	$sql .= "	domain_uuid = :domain_uuid ";
-	$sql .= "	or domain_uuid is null ";
+	if ($has_dialplan_global) {
+		$sql .= "	or domain_uuid is null ";
+	}
 	$sql .= ") ";
 	$parameters['domain_uuid'] = $domain_uuid;
 }
@@ -706,7 +714,11 @@ $sql .= "select distinct dialplan_context from v_dialplans ";
 if ($show == "all" && $has_dialplan_all) {
 	$sql .= "where true ";
 } else {
-	$sql                      .= "where (domain_uuid = :domain_uuid or domain_uuid is null) ";
+	$sql                      .= "where (domain_uuid = :domain_uuid ";
+	if ($has_dialplan_global) {
+		$sql .= "or domain_uuid is null ";
+	}
+	$sql .= ") ";
 	$parameters['domain_uuid'] = $domain_uuid;
 }
 if (!is_uuid($app_uuid)) {

@@ -69,6 +69,105 @@
 
 if ($domains_processed == 1) {
 
+	// Database-level guard for enhanced dialplan manager:
+	// context 'global' rows must be truly global (domain_uuid is null).
+	// First remove existing domain-scoped duplicates where a matching global
+	// row already exists, then add an idempotent CHECK constraint.
+	if (($db_type ?? null) === 'pgsql') {
+		$cleanup_sql = "
+			WITH duplicate_domain_global_rows AS (
+				SELECT d.dialplan_uuid
+				FROM v_dialplans d
+				JOIN v_dialplans g
+					ON g.dialplan_context = 'global'
+					AND g.domain_uuid IS NULL
+					AND lower(trim(g.dialplan_name)) = lower(trim(d.dialplan_name))
+				WHERE d.dialplan_context = 'global'
+					AND d.domain_uuid IS NOT NULL
+			)
+			DELETE FROM v_dialplan_details
+			WHERE dialplan_uuid IN (SELECT dialplan_uuid FROM duplicate_domain_global_rows)
+		";
+		$database->execute($cleanup_sql);
+		unset($cleanup_sql);
+
+		$cleanup_sql = "
+			DELETE FROM v_dialplans d
+			WHERE d.dialplan_context = 'global'
+				AND d.domain_uuid IS NOT NULL
+				AND EXISTS (
+					SELECT 1
+					FROM v_dialplans g
+					WHERE g.dialplan_context = 'global'
+						AND g.domain_uuid IS NULL
+						AND lower(trim(g.dialplan_name)) = lower(trim(d.dialplan_name))
+				)
+		";
+		$database->execute($cleanup_sql);
+		unset($cleanup_sql);
+
+		// Normalize any remaining global-context rows to true global scope.
+		$database->execute("UPDATE v_dialplans SET domain_uuid = null WHERE dialplan_context = 'global' AND domain_uuid IS NOT NULL");
+
+		// After normalization, keep a single global row per normalized name.
+		$cleanup_sql = "
+			WITH ranked_global_rows AS (
+				SELECT
+					dialplan_uuid,
+					row_number() OVER (
+						PARTITION BY lower(trim(dialplan_name))
+						ORDER BY coalesce(update_date, insert_date) DESC NULLS LAST, dialplan_uuid
+					) AS row_rank
+				FROM v_dialplans
+				WHERE dialplan_context = 'global'
+					AND domain_uuid IS NULL
+			),
+			duplicate_global_rows AS (
+				SELECT dialplan_uuid
+				FROM ranked_global_rows
+				WHERE row_rank > 1
+			)
+			DELETE FROM v_dialplan_details
+			WHERE dialplan_uuid IN (SELECT dialplan_uuid FROM duplicate_global_rows)
+		";
+		$database->execute($cleanup_sql);
+		unset($cleanup_sql);
+
+		$cleanup_sql = "
+			WITH ranked_global_rows AS (
+				SELECT
+					dialplan_uuid,
+					row_number() OVER (
+						PARTITION BY lower(trim(dialplan_name))
+						ORDER BY coalesce(update_date, insert_date) DESC NULLS LAST, dialplan_uuid
+					) AS row_rank
+				FROM v_dialplans
+				WHERE dialplan_context = 'global'
+					AND domain_uuid IS NULL
+			)
+			DELETE FROM v_dialplans
+			WHERE dialplan_uuid IN (
+				SELECT dialplan_uuid
+				FROM ranked_global_rows
+				WHERE row_rank > 1
+			)
+		";
+		$database->execute($cleanup_sql);
+		unset($cleanup_sql);
+
+		$constraint_exists = $database->select(
+			"SELECT 1 FROM pg_constraint WHERE conname = 'v_dialplans_global_context_domain_uuid_ck'",
+			null,
+			'column'
+		);
+		if (empty($constraint_exists)) {
+			$database->execute(
+				"ALTER TABLE v_dialplans ADD CONSTRAINT v_dialplans_global_context_domain_uuid_ck CHECK (dialplan_context <> 'global' OR domain_uuid IS NULL)"
+			);
+		}
+		unset($constraint_exists);
+	}
+
 	require_once __DIR__ . '/resources/functions/dialplan_canonicalize.php';
 
 	$baseline_dir = dialplan_baseline_directory();
