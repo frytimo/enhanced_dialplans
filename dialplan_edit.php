@@ -353,6 +353,11 @@ if (!empty($_POST['dialplan_xml']) && !empty($_POST['submit'])) {
 		: $domain_uuid;
 	if ($action === 'add') {
 		$array['dialplans'][0]['app_uuid'] = uuid();
+	} else {
+		// Preserve app_uuid on update - was captured from request or loaded from database
+		if (!empty($app_uuid)) {
+			$array['dialplans'][0]['app_uuid'] = $app_uuid;
+		}
 	}
 	$array['dialplans'][0]['dialplan_name'] = $dialplan_name;
 	$array['dialplans'][0]['dialplan_number'] = $dialplan_number;

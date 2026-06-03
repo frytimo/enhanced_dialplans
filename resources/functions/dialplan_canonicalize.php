@@ -32,6 +32,10 @@ if (!function_exists('dialplan_normalize_name')) {
 	 *   - `enabled="true"` attribute omitted (default)
 	 *
 	 * Returns null when the input is not parseable XML.
+	 * 
+	 * @param mixed $xml XML to be canonicalized
+	 * 
+	 * @return string|null Parsed XML or null if not parseable
 	 */
 	function dialplan_canonicalize_xml($xml): ?string {
 		$xml = (string) $xml;

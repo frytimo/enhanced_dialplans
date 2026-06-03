@@ -18,8 +18,8 @@ if (class_exists('\frytimo\fusor\resources\classes\fusor')) {
 		#[\frytimo\fusor\resources\attributes\http_get(path: '/app/dialplans/dialplans.php', stage: 'before', priority: 1000)]
 		public static function redirect_dialplan(\frytimo\fusor\resources\classes\fusor_event $event): void {
 			if (!url::from_request()->has_parameters()) {
-				header('Location: /app/enhanced_dialplans/dialplans.php', true, 301);
-				exit();
+				//header('Location: /app/enhanced_dialplans/dialplans.php', true, 301);
+				//exit();
 			}
 		}
 	}

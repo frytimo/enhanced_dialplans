@@ -1138,18 +1138,12 @@ $template->assign('th_original_col', $th_original_col);
 $template->assign('th_enabled', $th_enabled);
 $template->assign('th_description', $th_description);
 
-// invoke pre-render hook
-app::dispatch_list_pre_render('dialplan_list_page_hook', $url, $template);
-
 // include the header
 $document['title'] = $page_title;
 require_once "resources/header.php";
 
 // render the template
 $html = $template->render('dialplans_list.tpl');
-
-// invoke post-render hook
-app::dispatch_list_post_render('dialplan_list_page_hook', $url, $html);
 
 echo $html;
 

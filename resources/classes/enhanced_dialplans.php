@@ -24,26 +24,8 @@
 	Mark J Crane <markjcrane@fusionpbx.com>
 */
 
-// Declare app class when not in playground
-if (!class_exists('app')) {
-	// no-op class definition to prevent errors when app class does not exist (such as when this page is included in another app)
-	class app {
-		protected $database;
-		protected $settings;
-		public function __construct() {
-			// Placeholder constructor for the app class
-		}
-		public static function dispatch_list_pre_render($hook, $url, $template) {
-			// no-op
-		}
-		public static function dispatch_list_post_render($hook, $url, $html) {
-			// no-op
-		}
-	}
-}
-
 //define the enhanced_dialplans class
-class enhanced_dialplans extends app implements clear_cache {
+class enhanced_dialplans implements clear_cache {
 
 	/**
 	 * declare constant variables
@@ -88,12 +70,13 @@ class enhanced_dialplans extends app implements clear_cache {
 	public $destination;
 	public $is_empty;
 	public $array;
-	const LIST_PAGE = 'dialplans.php';
+
+	const LIST_PAGE         = 'dialplans.php';
 	const PERMISSION_PREFIX = 'dialplan_';
-	const TABLE = 'dialplans';
-	const UUID_PREFIX = 'dialplan_';
-	const TOGGLE_FIELD = 'dialplan_enabled';
-	const TOGGLE_VALUES = ['true', 'false'];
+	const TABLE             = 'dialplans';
+	const UUID_PREFIX       = 'dialplan_';
+	const TOGGLE_FIELD      = 'dialplan_enabled';
+	const TOGGLE_VALUES     = ['true', 'false'];
 
 	/**
 	 * declare private variables
@@ -123,9 +106,6 @@ class enhanced_dialplans extends app implements clear_cache {
 
 		//set the default value
 		$this->dialplan_global = false;
-
-		//initialize the parent class
-		parent::__construct();
 	}
 
 	/**
@@ -190,14 +170,13 @@ class enhanced_dialplans extends app implements clear_cache {
 	 *
 	 * @return bool True if the dialplan exists, False otherwise
 	 */
-	public function dialplan_exists() {
+	public function dialplan_exists(): bool {
 		$sql                         = "select count(*) from v_dialplans ";
 		$sql                         .= "where (domain_uuid = :domain_uuid or domain_uuid is null)";
 		$sql                         .= "and dialplan_uuid = :dialplan_uuid ";
 		$parameters['domain_uuid']   = $this->domain_uuid;
 		$parameters['dialplan_uuid'] = $this->dialplan_uuid;
 		return $this->database->select($sql, $parameters ?? null, 'column') != 0 ? true : false;
-		unset($sql, $parameters);
 	}
 
 	/**
@@ -234,6 +213,7 @@ class enhanced_dialplans extends app implements clear_cache {
 				foreach ($xml_list as $xml_file) {
 					//get the xml string
 					$xml_string = file_get_contents($xml_file);
+					$json = '';
 
 					//prepare the xml
 					if (!empty($xml_string)) {
@@ -504,6 +484,7 @@ class enhanced_dialplans extends app implements clear_cache {
 			unset($sql, $parameters);
 			$x = 0;
 			$y = 0;
+			$array = [];
 			if (!empty($dialplans)) {
 				foreach ($dialplans as $row) {
 					//if the previous dialplan uuid has not been set then set it
@@ -1306,6 +1287,9 @@ class enhanced_dialplans extends app implements clear_cache {
 
 			//toggle the checked records
 			if (!empty($records)) {
+				$states = [];
+				$uuids = [];
+				$dialplan_contexts = [];
 
 				//get current toggle state
 				foreach ($records as $x => $record) {
@@ -1387,143 +1371,141 @@ class enhanced_dialplans extends app implements clear_cache {
 	public function copy($records) {
 
 		//determine app and permission prefix
-		if (permission_exists(self::PERMISSION_PREFIX . 'add')) {
-
-			//add multi-lingual support
-			$language = new text;
-			$text     = $language->get();
-
-			//validate the token
-			$token = new token;
-			if (!$token->validate($_SERVER['PHP_SELF'])) {
-				message::add($text['message-invalid_token'], 'negative');
-				header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/' . static::LIST_PAGE);
-				exit;
-			}
-
-			//copy the checked records
-			if (!empty($records)) {
-
-				//get checked records
-				foreach ($records as $x => $record) {
-					if (!empty($record['checked']) && $record['checked'] == 'true' && is_uuid($record['uuid'])) {
-						$uuids[] = "'" . $record['uuid'] . "'";
-					}
-				}
-
-				//create insert array from existing data
-				if (!empty($uuids)) {
-
-					//primary table
-					$sql  = "select * from v_" . self::TABLE . " ";
-					$sql  .= "where " . self::UUID_PREFIX . "uuid in (" . implode(', ', $uuids) . ") ";
-					$rows = $this->database->select($sql, $parameters ?? null, 'all');
-					if (!empty($rows)) {
-						$y = 0;
-						foreach ($rows as $x => $row) {
-							//set a unique uuid
-							$primary_uuid = uuid();
-
-							//convert boolean values to a string
-							foreach ($row as $key => $value) {
-								if (gettype($value) == 'boolean') {
-									$value     = $value ? 'true' : 'false';
-									$row[$key] = $value;
-								}
-							}
-
-							//copy data
-							$array[self::TABLE][$x] = $row;
-
-							//app_uuid needs to be unique for copied dialplans
-							//except for inbound and outbound routes, fifo, time conditions
-							$app_uuid = $row['app_uuid'];
-							switch ($app_uuid) {
-								case "c03b422e-13a8-bd1b-e42b-b6b9b4d27ce4":
-									break;
-								case "8c914ec3-9fc0-8ab5-4cda-6c9288bdc9a3":
-									break;
-								case "16589224-c876-aeb3-f59f-523a1c0801f7":
-									break;
-								case "4b821450-926b-175a-af93-a03c441818b1":
-									break;
-								default:
-									$app_uuid = uuid();
-							}
-
-							//dialplan copy should have a unique app_uuid
-							$array[self::TABLE][$x]['app_uuid'] = $app_uuid;
-
-							//overwrite
-							$array[self::TABLE][$x][self::UUID_PREFIX . 'uuid'] = $primary_uuid;
-							$array[self::TABLE][$x]['dialplan_description']      = trim($row['dialplan_description'] . ' (' . $text['label-copy'] . ')');
-
-							//details sub table
-							$sql_2                         = "select * from v_dialplan_details where dialplan_uuid = :dialplan_uuid";
-							$parameters_2['dialplan_uuid'] = $row['dialplan_uuid'];
-							$rows_2                        = $this->database->select($sql_2, $parameters_2 ?? null, 'all');
-							if (!empty($rows_2)) {
-								foreach ($rows_2 as $row_2) {
-
-									//convert boolean values to a string
-									foreach ($row_2 as $key => $value) {
-										if (gettype($value) == 'boolean') {
-											$value       = $value ? 'true' : 'false';
-											$row_2[$key] = $value;
-										}
-									}
-
-									//copy data
-									$array['dialplan_details'][$y] = $row_2;
-
-									//overwrite
-									$array['dialplan_details'][$y]['dialplan_detail_uuid'] = uuid();
-									$array['dialplan_details'][$y]['dialplan_uuid']        = $primary_uuid;
-
-									//increment
-									$y++;
-
-								}
-							}
-							unset($sql_2, $parameters_2, $rows_2, $row_2);
-
-							//get dialplan contexts
-							$dialplan_contexts[] = $row['dialplan_context'];
-						}
-					}
-					unset($sql, $parameters, $rows, $row);
-				}
-
-				//save the changes and set the message
-				if (!empty($array)) {
-
-					//grant temporary permissions
-					$p = permissions::new();
-					$p->add('dialplan_detail_add', 'temp');
-
-					//save the array
-					$this->database->save($array);
-					unset($array);
-
-					//revoke temporary permissions
-					$p->delete('dialplan_detail_add', 'temp');
-
-					//clear the cache
-					if (!empty($dialplan_contexts)) {
-						$dialplan_contexts = array_unique($dialplan_contexts, SORT_STRING);
-						$cache             = new cache;
-						foreach ($dialplan_contexts as $dialplan_context) {
-							$cache->delete("dialplan:" . $dialplan_context);
-						}
-					}
-
-					//set message
-					message::add($text['message-copy']);
-
-				}
-				unset($records);
-			}
-
+		if (empty($records) || !permission_exists(self::PERMISSION_PREFIX . 'add')) {
+			return;
 		}
-	} //method
-} //class
+
+		//add multi-lingual support
+		$language = new text;
+		$text     = $language->get();
+
+		//validate the token
+		$token = new token;
+		if (!$token->validate($_SERVER['PHP_SELF'])) {
+			message::add($text['message-invalid_token'], 'negative');
+			header('Location: ' . PROJECT_PATH . '/app/enhanced_dialplans/' . static::LIST_PAGE);
+			exit;
+		}
+
+		//get checked records
+		$uuids = [];
+		foreach ($records as $x => $record) {
+			if (!empty($record['checked']) && $record['checked'] == 'true' && is_uuid($record['uuid'])) {
+				$uuids[] = "'" . $record['uuid'] . "'";
+			}
+		}
+
+		//create insert array from existing data
+		if (empty($uuids)) {
+			return;
+		}
+
+		//primary table
+		$sql  = "select * from v_" . self::TABLE . " ";
+		$sql  .= "where " . self::UUID_PREFIX . "uuid in (" . implode(', ', $uuids) . ") ";
+		$rows = $this->database->select($sql, $parameters ?? null, 'all');
+		if (empty($rows)) {
+			return;
+		}
+
+		$y = 0;
+		foreach ($rows as $x => $row) {
+			//set a unique uuid
+			$primary_uuid = uuid();
+
+			//convert boolean values to a string
+			foreach ($row as $key => $value) {
+				if (gettype($value) == 'boolean') {
+					$value     = $value ? 'true' : 'false';
+					$row[$key] = $value;
+				}
+			}
+
+			//copy data
+			$array[self::TABLE][$x] = $row;
+
+			//app_uuid needs to be unique for copied dialplans
+			//except for inbound and outbound routes, fifo, time conditions
+			$app_uuid = $row['app_uuid'];
+			switch ($app_uuid) {
+				case "c03b422e-13a8-bd1b-e42b-b6b9b4d27ce4":
+					break;
+				case "8c914ec3-9fc0-8ab5-4cda-6c9288bdc9a3":
+					break;
+				case "16589224-c876-aeb3-f59f-523a1c0801f7":
+					break;
+				case "4b821450-926b-175a-af93-a03c441818b1":
+					break;
+				default:
+					$app_uuid = uuid();
+			}
+
+			//dialplan copy should have a unique app_uuid
+			$array[self::TABLE][$x]['app_uuid'] = $app_uuid;
+
+			//overwrite
+			$array[self::TABLE][$x][self::UUID_PREFIX . 'uuid'] = $primary_uuid;
+			$array[self::TABLE][$x]['dialplan_description']      = trim($row['dialplan_description'] . ' (' . $text['label-copy'] . ')');
+
+			//details sub table
+			$sql_2                         = "select * from v_dialplan_details where dialplan_uuid = :dialplan_uuid";
+			$parameters_2['dialplan_uuid'] = $row['dialplan_uuid'];
+			$rows_2                        = $this->database->select($sql_2, $parameters_2 ?? null, 'all');
+			if (!empty($rows_2)) {
+				foreach ($rows_2 as $row_2) {
+
+					//convert boolean values to a string
+					foreach ($row_2 as $key => $value) {
+						if (gettype($value) == 'boolean') {
+							$value       = $value ? 'true' : 'false';
+							$row_2[$key] = $value;
+						}
+					}
+
+					//copy data
+					$array['dialplan_details'][$y] = $row_2;
+
+					//overwrite
+					$array['dialplan_details'][$y]['dialplan_detail_uuid'] = uuid();
+					$array['dialplan_details'][$y]['dialplan_uuid']        = $primary_uuid;
+
+					//increment
+					$y++;
+
+				}
+			}
+			unset($sql_2, $parameters_2, $rows_2, $row_2);
+
+			//get dialplan contexts
+			$dialplan_contexts[] = $row['dialplan_context'];
+		}
+
+		//save the changes and set the message
+		if (empty($array)) {
+			message::add($text['message-copy']);
+			return;
+		}
+
+		//grant temporary permissions
+		$p = permissions::new();
+		$p->add('dialplan_detail_add', 'temp');
+
+		//save the array
+		$this->database->save($array);
+
+		//revoke temporary permissions
+		$p->delete('dialplan_detail_add', 'temp');
+
+		//clear the cache
+		if (!empty($dialplan_contexts)) {
+			$dialplan_contexts = array_unique($dialplan_contexts, SORT_STRING);
+			$cache             = new cache;
+			foreach ($dialplan_contexts as $dialplan_context) {
+				$cache->delete("dialplan:" . $dialplan_context);
+			}
+		}
+
+		//set message
+		message::add($text['message-copy']);
+	}
+}

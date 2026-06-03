@@ -1,7 +1,7 @@
 <?php
 
 // Fusor will handle the redirection from the old dialplans page to the new enhanced dialplans automatically
-if (class_exists('\frytimo\fusor\resources\classes\fusor')) return;
+//if (class_exists('\frytimo\fusor\resources\classes\fusor')) return;
 
 $y = 0;
 $apps[$x]['menu'][$y]['title']['en-us'] = "Enhanced Dialplan Manager";
