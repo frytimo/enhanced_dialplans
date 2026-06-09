@@ -34,8 +34,14 @@ if (!permission_exists('dialplan_edit') && !permission_exists('dialplan_add')) {
 	echo "access denied";
 	exit;
 }
-	$has_dialplan_domain = permission_exists('dialplan_domain');
-	$has_dialplan_xml    = permission_exists('dialplan_xml');
+
+global $database;
+if (!($database instanceof database)) {
+	$database = database::new();
+}
+
+$has_dialplan_domain = permission_exists('dialplan_domain');
+$has_dialplan_xml    = permission_exists('dialplan_xml');
 
 if (!class_exists('url')) {
 	require_once "resources/classes/url.php";
@@ -363,7 +369,8 @@ if (
 			$p = permissions::new();
 			$p->add('dialplan_detail_add', 'temp');
 			$p->add('dialplan_detail_edit', 'temp');
-			$database->save(['dialplan_details' => $details_save]);
+			$data = ['dialplan_details' => $details_save];
+			$database->save($data);
 			$p->delete('dialplan_detail_add', 'temp');
 			$p->delete('dialplan_detail_edit', 'temp');
 
