@@ -548,6 +548,10 @@ class enhanced_dialplans implements clear_cache {
 								}
 							}
 						}
+						$regex_match   = $regex_match ?? false;
+						$regex_match_1 = $regex_match_1 ?? '';
+						$regex_match_2 = $regex_match_2 ?? '';
+						$regex_match_3 = $regex_match_3 ?? '';
 						if ($regex_match) {
 							//get the variables
 							if ($field['dialplan_detail_type'] == "set" && $field['dialplan_detail_tag'] == "action") {
@@ -631,6 +635,9 @@ class enhanced_dialplans implements clear_cache {
 		//$xml .= "<document type=\"freeswitch/xml\">\n";
 		//$xml .= "	<section name=\"dialplan\" description=\"\">\n";
 		//$xml .= "		<context name=\"" . $this->context . "\">\n";
+
+		//initialize dialplans array
+		$dialplans = [];
 
 		//set defaults
 		$previous_dialplan_uuid         = "";
@@ -742,6 +749,11 @@ class enhanced_dialplans implements clear_cache {
 			$condition_attribute            = '';
 			$condition_break                = '';
 			$xml                            = '';
+			$dialplans                      = [];
+			$domains                        = [];
+			$domain_uuid                    = null;
+			$domain_name                    = '';
+			$first_action                   = true;
 
 			//loop through the results to get the xml from the dialplan_xml field or from dialplan details table
 			$x = 0;
@@ -1221,6 +1233,8 @@ class enhanced_dialplans implements clear_cache {
 		}
 
 		//build the delete array
+		$array = [];
+		$dialplan_contexts = [];
 		foreach ($records as $x => $record) {
 			if (!empty($record['checked']) && $record['checked'] == 'true' && is_uuid($record['uuid'])) {
 
@@ -1238,7 +1252,7 @@ class enhanced_dialplans implements clear_cache {
 		}
 
 		//nothing to do
-		if (!empty($array)) {
+		if (empty($array)) {
 			return;
 		}
 
