@@ -40,6 +40,150 @@ if (!(permission_exists('dialplan_view') || permission_exists('inbound_route_vie
 // Canonicalization + baseline-lookup helpers (shared with app_defaults.php).
 require_once __DIR__ . "/resources/functions/dialplan_canonicalize.php";
 
+if (!function_exists('dialplan_parse_baseline_extension_attributes')) {
+	/**
+	 * Parse baseline dialplan XML and extract root <extension> attributes.
+	 */
+	function dialplan_parse_baseline_extension_attributes(string $xml): ?array {
+		if ($xml === '') {
+			return null;
+		}
+		$wrapped = '<?xml version="1.0" encoding="UTF-8"?><_root>' . $xml . '</_root>';
+		$prev_errors = libxml_use_internal_errors(true);
+		$doc = new DOMDocument();
+		$loaded = $doc->loadXML($wrapped, LIBXML_NOBLANKS | LIBXML_NONET);
+		libxml_clear_errors();
+		libxml_use_internal_errors($prev_errors);
+		if (!$loaded) {
+			return null;
+		}
+
+		$extension = $doc->getElementsByTagName('extension')->item(0);
+		if ($extension === null) {
+			return null;
+		}
+
+		$get_attr = static function(DOMElement $element, string $name): ?string {
+			$value = (string) $element->getAttribute($name);
+			return $value === '' ? null : $value;
+		};
+
+		$enabled_raw = strtolower((string) ($get_attr($extension, 'enabled') ?? 'true'));
+		$enabled = in_array($enabled_raw, ['0', 'false', 'no', 'off'], true) ? 'false' : 'true';
+
+		$global_raw = strtolower((string) ($get_attr($extension, 'global') ?? 'false'));
+		$is_global = in_array($global_raw, ['1', 'true', 'yes', 'on'], true);
+
+		return [
+			'dialplan_name' => $get_attr($extension, 'name') ?? '',
+			'dialplan_number' => $get_attr($extension, 'number') ?? '',
+			'dialplan_context' => $get_attr($extension, 'context') ?? '',
+			'dialplan_order' => (int) ($get_attr($extension, 'order') ?? 0),
+			'dialplan_continue' => strtolower((string) ($get_attr($extension, 'continue') ?? 'false')) === 'true' ? 'true' : 'false',
+			'dialplan_enabled' => $enabled,
+			'dialplan_description' => $get_attr($extension, 'description') ?? '',
+			'dialplan_destination' => $get_attr($extension, 'destination') ?? 'false',
+			'app_uuid' => $get_attr($extension, 'app_uuid'),
+			'dialplan_global' => $is_global,
+		];
+	}
+}
+
+if (!function_exists('dialplan_build_details_from_xml')) {
+	/**
+	 * Build v_dialplan_details rows from extension XML for a specific dialplan.
+	 */
+	function dialplan_build_details_from_xml(string $dialplan_uuid, $domain_uuid, string $xml): array {
+		$xml_obj = simplexml_load_string($xml);
+		if ($xml_obj === false) {
+			return [];
+		}
+
+		$xml_parsed = json_decode(json_encode($xml_obj), true);
+		if (empty($xml_parsed['condition'])) {
+			return [];
+		}
+		if (!isset($xml_parsed['condition'][0])) {
+			$xml_parsed['condition'] = [$xml_parsed['condition']];
+		}
+
+		$details = [];
+		$group = 0;
+		$order = 5;
+
+		foreach ($xml_parsed['condition'] as $condition) {
+			$condition_has_actions = !empty($condition['action']) || !empty($condition['anti-action']);
+
+			$details[] = [
+				'dialplan_detail_uuid' => uuid(),
+				'domain_uuid' => $domain_uuid,
+				'dialplan_uuid' => $dialplan_uuid,
+				'dialplan_detail_tag' => 'condition',
+				'dialplan_detail_type' => $condition['@attributes']['field'] ?? null,
+				'dialplan_detail_data' => $condition['@attributes']['expression'] ?? null,
+				'dialplan_detail_break' => $condition['@attributes']['break'] ?? null,
+				'dialplan_detail_inline' => null,
+				'dialplan_detail_group' => $group,
+				'dialplan_detail_order' => $order,
+				'dialplan_detail_enabled' => 'true',
+			];
+			$order += 5;
+
+			if (!empty($condition['action']) && !isset($condition['action'][0])) {
+				$condition['action'] = [$condition['action']];
+			}
+			if (!empty($condition['anti-action']) && !isset($condition['anti-action'][0])) {
+				$condition['anti-action'] = [$condition['anti-action']];
+			}
+
+			if (!empty($condition['action'])) {
+				foreach ($condition['action'] as $action) {
+					$details[] = [
+						'dialplan_detail_uuid' => uuid(),
+						'domain_uuid' => $domain_uuid,
+						'dialplan_uuid' => $dialplan_uuid,
+						'dialplan_detail_tag' => 'action',
+						'dialplan_detail_type' => $action['@attributes']['application'] ?? null,
+						'dialplan_detail_data' => $action['@attributes']['data'] ?? null,
+						'dialplan_detail_break' => null,
+						'dialplan_detail_inline' => $action['@attributes']['inline'] ?? null,
+						'dialplan_detail_group' => $group,
+						'dialplan_detail_order' => $order,
+						'dialplan_detail_enabled' => 'true',
+					];
+					$order += 5;
+				}
+			}
+
+			if (!empty($condition['anti-action'])) {
+				foreach ($condition['anti-action'] as $action) {
+					$details[] = [
+						'dialplan_detail_uuid' => uuid(),
+						'domain_uuid' => $domain_uuid,
+						'dialplan_uuid' => $dialplan_uuid,
+						'dialplan_detail_tag' => 'anti-action',
+						'dialplan_detail_type' => $action['@attributes']['application'] ?? null,
+						'dialplan_detail_data' => $action['@attributes']['data'] ?? null,
+						'dialplan_detail_break' => null,
+						'dialplan_detail_inline' => $action['@attributes']['inline'] ?? null,
+						'dialplan_detail_group' => $group,
+						'dialplan_detail_order' => $order,
+						'dialplan_detail_enabled' => 'true',
+					];
+					$order += 5;
+				}
+			}
+
+			if ($condition_has_actions) {
+				$group++;
+			}
+			$order += 5;
+		}
+
+		return $details;
+	}
+}
+
 
 $has_dialplan_add          = permission_exists('dialplan_add');
 $has_dialplan_all          = permission_exists('dialplan_all');
@@ -365,53 +509,197 @@ if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 				$file_map = dialplan_build_original_file_map($dialplan_directory);
 				$restored_contexts = [];
 				$restored_count = 0;
+				$domain_name = $_SESSION['domain_name'] ?? '';
+				$store_details_setting = $settings->get('dialplan', 'store_details', true);
+				$store_details_enabled = !in_array(strtolower((string) $store_details_setting), ['false', '0', 'off', 'no'], true);
+				$restored_detail_rows = [];
+				$restored_detail_dialplan_uuids = [];
 
 				foreach ($dialplans as $dialplan) {
 					if (empty($dialplan['checked'])) {
 						continue;
 					}
-					if (empty($dialplan['uuid']) || !is_uuid($dialplan['uuid'])) {
+
+					$selected_uuid = $dialplan['uuid'] ?? '';
+					$selected_original_file_key = $dialplan['original_file_key'] ?? '';
+
+					// Existing row restore path
+					if (!empty($selected_uuid) && is_uuid($selected_uuid)) {
+						$sql = "select dialplan_uuid, domain_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
+						$sql .= "where dialplan_uuid = :dialplan_uuid ";
+						$sql .= "and (domain_uuid = :domain_uuid ";
+						if ($has_dialplan_global) {
+							$sql .= "or domain_uuid is null ";
+						}
+						$sql .= ") ";
+						$parameters = [];
+						$parameters['dialplan_uuid'] = $selected_uuid;
+						$parameters['domain_uuid'] = $domain_uuid;
+						$row = $database->select($sql, $parameters, 'row');
+						unset($sql, $parameters);
+
+						if (!is_array($row) || @sizeof($row) == 0) {
+							continue;
+						}
+
+						$original_file = dialplan_find_original_file($row['dialplan_order'], $row['dialplan_name'], $file_map);
+						if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
+							continue;
+						}
+
+						$original_xml = file_get_contents($original_file);
+						if ($original_xml === false) {
+							continue;
+						}
+
+						$array['dialplans'][] = [
+							'dialplan_uuid' => $row['dialplan_uuid'],
+							'dialplan_xml' => $original_xml,
+						];
+						if ($store_details_enabled) {
+							$detail_rows = dialplan_build_details_from_xml($row['dialplan_uuid'], $row['domain_uuid'] ?? null, $original_xml);
+							if (!empty($detail_rows)) {
+								$restored_detail_rows = array_merge($restored_detail_rows, $detail_rows);
+							}
+							$restored_detail_dialplan_uuids[] = $row['dialplan_uuid'];
+						}
+						$restored_contexts[] = $row['dialplan_context'];
+						$restored_count++;
 						continue;
 					}
 
-					$sql = "select dialplan_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
-					$sql .= "where dialplan_uuid = :dialplan_uuid ";
-					$sql .= "and (domain_uuid = :domain_uuid ";
-					if ($has_dialplan_global) {
-						$sql .= "or domain_uuid is null ";
-					}
-					$sql .= ") ";
-					$parameters = [];
-					$parameters['dialplan_uuid'] = $dialplan['uuid'];
-					$parameters['domain_uuid'] = $domain_uuid;
-					$row = $database->select($sql, $parameters, 'row');
-					unset($sql, $parameters);
+					// Missing row restore path (create dialplan from baseline file)
+					if (empty($selected_uuid) && !empty($selected_original_file_key) && isset($file_map[$selected_original_file_key])) {
+						$original_file = $file_map[$selected_original_file_key];
+						if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
+							continue;
+						}
 
-					if (!is_array($row) || @sizeof($row) == 0) {
-						continue;
-					}
+						$original_xml = file_get_contents($original_file);
+						if ($original_xml === false) {
+							continue;
+						}
 
-					$original_file = dialplan_find_original_file($row['dialplan_order'], $row['dialplan_name'], $file_map);
-					if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
-						continue;
-					}
+						$baseline = dialplan_parse_baseline_extension_attributes($original_xml);
+						if (!is_array($baseline) || empty($baseline['dialplan_name'])) {
+							continue;
+						}
 
-					$original_xml = file_get_contents($original_file);
-					if ($original_xml === false) {
-						continue;
-					}
+						$new_context = str_replace(["\${domain_name}", '{v_context}'], $domain_name, $baseline['dialplan_context']);
+						if ($new_context === '') {
+							$new_context = $domain_name;
+						}
 
-					$array['dialplans'][] = [
-						'dialplan_uuid' => $row['dialplan_uuid'],
-						'dialplan_xml' => $original_xml,
-					];
-					$restored_contexts[] = $row['dialplan_context'];
-					$restored_count++;
+						$new_domain_uuid = $baseline['dialplan_global'] ? null : $domain_uuid;
+						if ($baseline['dialplan_global'] && !$has_dialplan_global) {
+							continue;
+						}
+
+						// avoid duplicate re-create
+						$sql = "select count(*) from v_dialplans where dialplan_order = :dialplan_order and dialplan_name = :dialplan_name ";
+						$parameters = [
+							'dialplan_order' => $baseline['dialplan_order'],
+							'dialplan_name' => $baseline['dialplan_name'],
+						];
+						if ($baseline['dialplan_global']) {
+							$sql .= "and domain_uuid is null ";
+						}
+						else {
+							$sql .= "and domain_uuid = :domain_uuid ";
+							$parameters['domain_uuid'] = $domain_uuid;
+						}
+						$already_exists = (int) $database->select($sql, $parameters, 'column');
+						unset($sql, $parameters);
+						if ($already_exists > 0) {
+							continue;
+						}
+
+						$new_dialplan_uuid = uuid();
+						$array['dialplans'][] = [
+							'dialplan_uuid' => $new_dialplan_uuid,
+							'domain_uuid' => $new_domain_uuid,
+							'app_uuid' => $baseline['app_uuid'] ?? null,
+							'dialplan_context' => $new_context,
+							'dialplan_name' => $baseline['dialplan_name'],
+							'dialplan_number' => $baseline['dialplan_number'],
+							'dialplan_destination' => $baseline['dialplan_destination'],
+							'dialplan_continue' => $baseline['dialplan_continue'],
+							'dialplan_order' => $baseline['dialplan_order'],
+							'dialplan_enabled' => $baseline['dialplan_enabled'],
+							'dialplan_description' => $baseline['dialplan_description'],
+							'dialplan_xml' => $original_xml,
+							'dialplan_editor_version' => null,
+						];
+						if ($store_details_enabled) {
+							$detail_rows = dialplan_build_details_from_xml($new_dialplan_uuid, $new_domain_uuid, $original_xml);
+							if (!empty($detail_rows)) {
+								$restored_detail_rows = array_merge($restored_detail_rows, $detail_rows);
+							}
+							$restored_detail_dialplan_uuids[] = $new_dialplan_uuid;
+						}
+						$restored_contexts[] = $new_context;
+						$restored_count++;
+					}
 				}
 
 				if (!empty($array['dialplans'])) {
 					$database->save($array);
 					unset($array);
+
+					if ($store_details_enabled && !empty($restored_detail_dialplan_uuids)) {
+						$detail_uuids = array_unique($restored_detail_dialplan_uuids);
+						foreach ($detail_uuids as $detail_dialplan_uuid) {
+							$database->execute(
+								"delete from v_dialplan_details where dialplan_uuid = :dialplan_uuid",
+								['dialplan_uuid' => $detail_dialplan_uuid]
+							);
+						}
+
+						if (!empty($restored_detail_rows)) {
+							$p = permissions::new();
+							$p->add('dialplan_detail_add', 'temp');
+							$p->add('dialplan_detail_edit', 'temp');
+							$details_array = ['dialplan_details' => $restored_detail_rows];
+							$database->save($details_array);
+							unset($details_array);
+							$p->delete('dialplan_detail_add', 'temp');
+							$p->delete('dialplan_detail_edit', 'temp');
+
+							// Fallback to direct inserts if ORM save skipped any restored detail rows.
+							foreach ($detail_uuids as $detail_dialplan_uuid) {
+								$detail_count = (int) $database->select(
+									"select count(*) from v_dialplan_details where dialplan_uuid = :dialplan_uuid",
+									['dialplan_uuid' => $detail_dialplan_uuid],
+									'column'
+								);
+								if ($detail_count > 0) {
+									continue;
+								}
+
+								foreach ($restored_detail_rows as $detail_row) {
+									if (($detail_row['dialplan_uuid'] ?? null) !== $detail_dialplan_uuid) {
+										continue;
+									}
+									$database->execute(
+										"insert into v_dialplan_details (dialplan_detail_uuid, domain_uuid, dialplan_uuid, dialplan_detail_tag, dialplan_detail_type, dialplan_detail_data, dialplan_detail_break, dialplan_detail_inline, dialplan_detail_group, dialplan_detail_order, dialplan_detail_enabled) values (:dialplan_detail_uuid, :domain_uuid, :dialplan_uuid, :dialplan_detail_tag, :dialplan_detail_type, :dialplan_detail_data, :dialplan_detail_break, :dialplan_detail_inline, :dialplan_detail_group, :dialplan_detail_order, :dialplan_detail_enabled)",
+										[
+											'dialplan_detail_uuid' => $detail_row['dialplan_detail_uuid'],
+											'domain_uuid' => $detail_row['domain_uuid'],
+											'dialplan_uuid' => $detail_row['dialplan_uuid'],
+											'dialplan_detail_tag' => $detail_row['dialplan_detail_tag'],
+											'dialplan_detail_type' => $detail_row['dialplan_detail_type'],
+											'dialplan_detail_data' => $detail_row['dialplan_detail_data'],
+											'dialplan_detail_break' => $detail_row['dialplan_detail_break'],
+											'dialplan_detail_inline' => $detail_row['dialplan_detail_inline'],
+											'dialplan_detail_group' => $detail_row['dialplan_detail_group'],
+											'dialplan_detail_order' => $detail_row['dialplan_detail_order'],
+											'dialplan_detail_enabled' => $detail_row['dialplan_detail_enabled'],
+										]
+									);
+								}
+							}
+						}
+					}
 
 					$cache = new cache;
 					foreach (array_unique($restored_contexts) as $restored_context) {
@@ -706,6 +994,155 @@ if (!empty($dialplans)) {
 			$all_original_status_match = false;
 		}
 	}
+}
+
+// include baseline dialplans that are missing from the database as restorable rows
+if (!empty($original_file_map)) {
+	$domain_name = $_SESSION['domain_name'] ?? '';
+	$inbound_app_uuid = 'c03b422e-13a8-bd1b-e42b-b6b9b4d27ce4';
+
+	// build an existence map for current domain/global scope to avoid false missing rows
+	$sql = "select dialplan_order, dialplan_name, domain_uuid from v_dialplans ";
+	$sql .= "where (domain_uuid = :domain_uuid ";
+	if ($has_dialplan_global) {
+		$sql .= "or domain_uuid is null ";
+	}
+	$sql .= ") ";
+	$parameters = ['domain_uuid' => $domain_uuid];
+	$existing_rows = $database->select($sql, $parameters, 'all');
+	unset($sql, $parameters);
+
+	$existing_map = [];
+	if (!empty($existing_rows)) {
+		foreach ($existing_rows as $existing_row) {
+			$key = dialplan_build_original_file_key($existing_row['dialplan_order'], $existing_row['dialplan_name']);
+			if ($key === null) {
+				continue;
+			}
+			$scope = empty($existing_row['domain_uuid']) ? 'global' : 'domain';
+			$existing_map[$key . '|' . $scope] = true;
+		}
+	}
+	unset($existing_rows, $existing_row);
+
+	foreach ($original_file_map as $file_key => $original_file) {
+		if (!is_file($original_file) || !is_readable($original_file)) {
+			continue;
+		}
+		if (!isset($original_xml_cache[$original_file])) {
+			$original_xml_cache[$original_file] = file_get_contents($original_file);
+		}
+		$original_xml = $original_xml_cache[$original_file];
+		if ($original_xml === false) {
+			continue;
+		}
+
+		$baseline = dialplan_parse_baseline_extension_attributes($original_xml);
+		if (!is_array($baseline) || empty($baseline['dialplan_name'])) {
+			continue;
+		}
+
+		$scope = $baseline['dialplan_global'] ? 'global' : 'domain';
+		if (!empty($existing_map[$file_key . '|' . $scope])) {
+			continue;
+		}
+
+		$resolved_context = str_replace(["\${domain_name}", '{v_context}'], $domain_name, $baseline['dialplan_context']);
+		if ($resolved_context === '') {
+			$resolved_context = $domain_name;
+		}
+
+		// mirror list filtering behavior
+		if (!is_uuid($app_uuid)) {
+			if (($baseline['app_uuid'] ?? null) === $inbound_app_uuid || $resolved_context === 'public') {
+				continue;
+			}
+		}
+		else {
+			if (!(
+				($baseline['app_uuid'] ?? null) === $app_uuid ||
+				($app_uuid === $inbound_app_uuid && $resolved_context === 'public')
+			)) {
+				continue;
+			}
+		}
+
+		if (!empty($context) && $resolved_context !== $context) {
+			continue;
+		}
+
+		if (!empty($search)) {
+			$search_haystack = implode(' ', [
+				(string) $baseline['dialplan_name'],
+				(string) $baseline['dialplan_number'],
+				(string) $resolved_context,
+				(string) $baseline['dialplan_description'],
+			]);
+			if (stripos($search_haystack, $search) === false) {
+				continue;
+			}
+		}
+
+		$dialplans[] = [
+			'dialplan_uuid' => '',
+			'domain_uuid' => $scope === 'global' ? null : $domain_uuid,
+			'app_uuid' => $baseline['app_uuid'] ?? null,
+			'dialplan_global' => $baseline['dialplan_global'] ? 'true' : 'false',
+			'dialplan_context' => $resolved_context,
+			'dialplan_name' => $baseline['dialplan_name'],
+			'dialplan_number' => $baseline['dialplan_number'],
+			'dialplan_order' => $baseline['dialplan_order'],
+			'dialplan_enabled' => $baseline['dialplan_enabled'],
+			'dialplan_description' => $baseline['dialplan_description'],
+			'original_xml_status' => 'diff',
+			'original_file_key' => $file_key,
+		];
+		$all_original_status_match = false;
+	}
+	unset($baseline, $original_xml, $resolved_context, $scope, $file_key, $original_file);
+	$num_rows = (int) $num_rows + count(array_filter($dialplans, static function($row) {
+		return empty($row['dialplan_uuid']) && !empty($row['original_file_key']);
+	}));
+}
+
+// Re-sort after appending synthetic missing baseline rows so they appear in the expected order.
+if (!empty($dialplans) && is_array($dialplans)) {
+	$sort_order = strtolower((string) $order) === 'desc' ? 'desc' : 'asc';
+	$sort_by = $order_by;
+	if (empty($sort_by)) {
+		$sort_by = 'dialplan_order';
+	}
+
+	usort($dialplans, function($a, $b) use ($sort_by, $sort_order) {
+		$va = $a[$sort_by] ?? null;
+		$vb = $b[$sort_by] ?? null;
+
+		// normalize values for known text fields
+		if ($sort_by === 'dialplan_name' || $sort_by === 'dialplan_description' || $sort_by === 'dialplan_context') {
+			$va = strtolower((string) $va);
+			$vb = strtolower((string) $vb);
+		}
+
+		if ($sort_by === 'dialplan_order') {
+			$cmp = ((int) $va) <=> ((int) $vb);
+		}
+		else {
+			$cmp = ($va <=> $vb);
+		}
+
+		// deterministic fallback: order then name
+		if ($cmp === 0) {
+			$order_cmp = ((int) ($a['dialplan_order'] ?? 0)) <=> ((int) ($b['dialplan_order'] ?? 0));
+			if ($order_cmp !== 0) {
+				$cmp = $order_cmp;
+			}
+			else {
+				$cmp = strtolower((string) ($a['dialplan_name'] ?? '')) <=> strtolower((string) ($b['dialplan_name'] ?? ''));
+			}
+		}
+
+		return $sort_order === 'desc' ? -$cmp : $cmp;
+	});
 }
 
 // get the list of all dialplan contexts
@@ -1015,7 +1452,8 @@ foreach ($dialplans as &$row) {
 		$row['_domain'] = '';
 	}
 	$row['_number']        = !empty($row['dialplan_number']) ? format_phone($row['dialplan_number']) : '';
-	$has_row_toggle        = (
+	$is_missing_baseline   = empty($row['dialplan_uuid']) && !empty($row['original_file_key']);
+	$has_row_toggle        = !$is_missing_baseline && (
 		(!is_uuid($app_uuid) && $has_dialplan_edit) ||
 		($row['app_uuid'] == "c03b422e-13a8-bd1b-e42b-b6b9b4d27ce4" && $has_inbound_route_edit) ||
 		($row['app_uuid'] == "8c914ec3-9fc0-8ab5-4cda-6c9288bdc9a3" && $has_outbound_route_edit) ||
@@ -1023,9 +1461,10 @@ foreach ($dialplans as &$row) {
 		($row['app_uuid'] == "4b821450-926b-175a-af93-a03c441818b1" && $has_time_condition_edit)
 	);
 	$row['_has_toggle']    = $has_row_toggle;
+	$row['_is_missing_baseline'] = $is_missing_baseline;
 	$row['_original_status'] = $row['original_xml_status'] ?? 'missing';
 	$row['_preview_button'] = '';
-	if ($row['_original_status'] === 'diff') {
+	if ($row['_original_status'] === 'diff' && !$is_missing_baseline && !empty($row['dialplan_uuid'])) {
 		$preview_link = $list_page_url . '?preview_dialplan_uuid=' . urlencode($row['dialplan_uuid'] ?? '');
 		$row['_preview_button'] = button::create([
 			'type' => 'button',
@@ -1037,12 +1476,15 @@ foreach ($dialplans as &$row) {
 		]);
 	}
 	$row['_restore_button'] = '';
-	if ($row['_original_status'] === 'diff' && $has_row_toggle) {
+	$can_restore_missing = $is_missing_baseline
+		&& $has_restore_action
+		&& (($row['dialplan_global'] ?? 'false') !== 'true' || $has_dialplan_global);
+	if ($row['_original_status'] === 'diff' && ($has_row_toggle || $can_restore_missing)) {
 		$row['_restore_button'] = button::create([
 			'type' => 'submit',
 			'class' => 'link',
-			'icon' => 'exclamation-triangle',
-			'title' => 'Mismatch detected. Click to restore.',
+			'icon' => $can_restore_missing ? 'plus-circle' : 'exclamation-triangle',
+			'title' => $can_restore_missing ? 'Missing baseline dialplan. Click to restore.' : 'Mismatch detected. Click to restore.',
 			'style' => 'color: #b45309; padding: 0; min-width: 0; margin: 0;',
 			'onclick' => "list_self_check('checkbox_" . $x . "'); list_action_set('restore_original'); list_form_submit('form_list')",
 		]);

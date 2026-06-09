@@ -81,6 +81,10 @@ class enhanced_dialplans implements clear_cache {
 	/**
 	 * declare private variables
 	 */
+	private $database;
+	private $settings;
+	private $domain_uuid;
+	private $user_uuid;
 	// protected $permission_prefix;
 	// protected $table;
 	// protected $uuid_prefix;
@@ -157,7 +161,7 @@ class enhanced_dialplans implements clear_cache {
 			case 'toggle_values':
 			case 'uuid_prefix':
 				// these properties are read-only, do not allow setting
-				break;
+				throw new RuntimeException("Cannot set read-only property '$name' in class " . __CLASS__, 1); // EPERM - Operation not permitted
 			default:
 				if (property_exists($this, $name)) {
 					$this->$name = $value;

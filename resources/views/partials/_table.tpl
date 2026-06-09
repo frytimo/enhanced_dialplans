@@ -33,6 +33,7 @@
 	<td class='checkbox'>
 		<input type='checkbox' name='dialplans[{$row@index}][checked]' id='checkbox_{$row@index}' value='true' onclick="checkbox_on_change(this); if (!this.checked) { document.getElementById('checkbox_all').checked = false; }">
 		<input type='hidden' name='dialplans[{$row@index}][uuid]' value='{$row.dialplan_uuid|escape}' />
+		<input type='hidden' name='dialplans[{$row@index}][original_file_key]' value='{$row.original_file_key|default:""|escape}' />
 	</td>
 	{/if}
 	<td class='center no-link shrink' style='width: 1%; white-space: nowrap; padding-left: 4px; padding-right: 4px;'>

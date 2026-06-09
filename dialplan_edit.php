@@ -229,7 +229,7 @@ if (
 		exit;
 	}
 
-	$sql = "select dialplan_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
+	$sql = "select dialplan_uuid, domain_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
 	$sql .= "where dialplan_uuid = :dialplan_uuid ";
 	$sql .= "and (domain_uuid = :domain_uuid ";
 	if (permission_exists('dialplan_global')) {
@@ -266,6 +266,144 @@ if (
 	$array['dialplans'][0]['dialplan_xml'] = $original_xml;
 	$database->save($array);
 	unset($array);
+
+	// Delete existing dialplan_details and restore from the original XML file
+	// Only populate v_dialplan_details when the store_details setting is enabled (default: true)
+	if ($settings->get('dialplan', 'store_details', true) !== false) {
+		$database->execute(
+			"DELETE FROM v_dialplan_details WHERE dialplan_uuid = :dialplan_uuid",
+			['dialplan_uuid' => $row['dialplan_uuid']]
+		);
+
+	$xml_obj = simplexml_load_string($original_xml);
+	if ($xml_obj !== false) {
+		$xml_parsed = json_decode(json_encode($xml_obj), true);
+
+		// Normalize conditions to always be an indexed array
+		if (!empty($xml_parsed['condition']) && !isset($xml_parsed['condition'][0])) {
+			$xml_parsed['condition'] = [$xml_parsed['condition']];
+		}
+
+		$detail_domain_uuid = $row['domain_uuid'] ?? null;
+		$details_save = [];
+		$y = 0;
+		$group = 0;
+		$order = 5;
+
+		if (!empty($xml_parsed['condition']) && is_array($xml_parsed['condition'])) {
+			foreach ($xml_parsed['condition'] as $condition) {
+				$condition_self_closing = empty($condition['action']) && empty($condition['anti-action']);
+
+				$details_save[$y]['dialplan_detail_uuid']    = uuid();
+				$details_save[$y]['domain_uuid']             = $detail_domain_uuid;
+				$details_save[$y]['dialplan_uuid']           = $row['dialplan_uuid'];
+				$details_save[$y]['dialplan_detail_tag']     = 'condition';
+				$details_save[$y]['dialplan_detail_type']    = $condition['@attributes']['field'] ?? null;
+				$details_save[$y]['dialplan_detail_data']    = $condition['@attributes']['expression'] ?? null;
+				$details_save[$y]['dialplan_detail_break']   = $condition['@attributes']['break'] ?? null;
+				$details_save[$y]['dialplan_detail_inline']  = null;
+				$details_save[$y]['dialplan_detail_group']   = $group;
+				$details_save[$y]['dialplan_detail_order']   = $order;
+				$details_save[$y]['dialplan_detail_enabled'] = 'true';
+				$y++;
+				$order += 5;
+
+				// Normalize actions and anti-actions to indexed arrays
+				if (!empty($condition['action']) && !isset($condition['action'][0])) {
+					$condition['action'] = [$condition['action']];
+				}
+				if (!empty($condition['anti-action']) && !isset($condition['anti-action'][0])) {
+					$condition['anti-action'] = [$condition['anti-action']];
+				}
+
+				if (!empty($condition['action'])) {
+					foreach ($condition['action'] as $action) {
+						$details_save[$y]['dialplan_detail_uuid']    = uuid();
+						$details_save[$y]['domain_uuid']             = $detail_domain_uuid;
+						$details_save[$y]['dialplan_uuid']           = $row['dialplan_uuid'];
+						$details_save[$y]['dialplan_detail_tag']     = 'action';
+						$details_save[$y]['dialplan_detail_type']    = $action['@attributes']['application'] ?? null;
+						$details_save[$y]['dialplan_detail_data']    = $action['@attributes']['data'] ?? null;
+						$details_save[$y]['dialplan_detail_break']   = null;
+						$details_save[$y]['dialplan_detail_inline']  = $action['@attributes']['inline'] ?? null;
+						$details_save[$y]['dialplan_detail_group']   = $group;
+						$details_save[$y]['dialplan_detail_order']   = $order;
+						$details_save[$y]['dialplan_detail_enabled'] = 'true';
+						$y++;
+						$order += 5;
+					}
+				}
+
+				if (!empty($condition['anti-action'])) {
+					foreach ($condition['anti-action'] as $action) {
+						$details_save[$y]['dialplan_detail_uuid']    = uuid();
+						$details_save[$y]['domain_uuid']             = $detail_domain_uuid;
+						$details_save[$y]['dialplan_uuid']           = $row['dialplan_uuid'];
+						$details_save[$y]['dialplan_detail_tag']     = 'anti-action';
+						$details_save[$y]['dialplan_detail_type']    = $action['@attributes']['application'] ?? null;
+						$details_save[$y]['dialplan_detail_data']    = $action['@attributes']['data'] ?? null;
+						$details_save[$y]['dialplan_detail_break']   = null;
+						$details_save[$y]['dialplan_detail_inline']  = $action['@attributes']['inline'] ?? null;
+						$details_save[$y]['dialplan_detail_group']   = $group;
+						$details_save[$y]['dialplan_detail_order']   = $order;
+						$details_save[$y]['dialplan_detail_enabled'] = 'true';
+						$y++;
+						$order += 5;
+					}
+				}
+
+				if (!$condition_self_closing) {
+					$group++;
+				}
+				$order += 5;
+			}
+		}
+
+		if (!empty($details_save)) {
+			$p = permissions::new();
+			$p->add('dialplan_detail_add', 'temp');
+			$p->add('dialplan_detail_edit', 'temp');
+			$database->save(['dialplan_details' => $details_save]);
+			$p->delete('dialplan_detail_add', 'temp');
+			$p->delete('dialplan_detail_edit', 'temp');
+
+			// Fallback to direct inserts if ORM save skipped the rebuilt detail rows.
+			$detail_count = (int) $database->select(
+				"select count(*) from v_dialplan_details where dialplan_uuid = :dialplan_uuid",
+				['dialplan_uuid' => $row['dialplan_uuid']],
+				'column'
+			);
+			if ($detail_count === 0) {
+				foreach ($details_save as $detail_row) {
+					$database->execute(
+						"insert into v_dialplan_details (dialplan_detail_uuid, domain_uuid, dialplan_uuid, dialplan_detail_tag, dialplan_detail_type, dialplan_detail_data, dialplan_detail_break, dialplan_detail_inline, dialplan_detail_group, dialplan_detail_order, dialplan_detail_enabled) values (:dialplan_detail_uuid, :domain_uuid, :dialplan_uuid, :dialplan_detail_tag, :dialplan_detail_type, :dialplan_detail_data, :dialplan_detail_break, :dialplan_detail_inline, :dialplan_detail_group, :dialplan_detail_order, :dialplan_detail_enabled)",
+						[
+							'dialplan_detail_uuid' => $detail_row['dialplan_detail_uuid'],
+							'domain_uuid' => $detail_row['domain_uuid'],
+							'dialplan_uuid' => $detail_row['dialplan_uuid'],
+							'dialplan_detail_tag' => $detail_row['dialplan_detail_tag'],
+							'dialplan_detail_type' => $detail_row['dialplan_detail_type'],
+							'dialplan_detail_data' => $detail_row['dialplan_detail_data'],
+							'dialplan_detail_break' => $detail_row['dialplan_detail_break'],
+							'dialplan_detail_inline' => $detail_row['dialplan_detail_inline'],
+							'dialplan_detail_group' => $detail_row['dialplan_detail_group'],
+							'dialplan_detail_order' => $detail_row['dialplan_detail_order'],
+							'dialplan_detail_enabled' => $detail_row['dialplan_detail_enabled'],
+						]
+					);
+				}
+			}
+			unset($details_save);
+		}
+		unset($xml_obj, $xml_parsed);
+	}
+	} // end store_details check
+
+	// Reset dialplan_editor_version so both editors treat this as a legacy dialplan
+	$reset_array['dialplans'][0]['dialplan_uuid'] = $row['dialplan_uuid'];
+	$reset_array['dialplans'][0]['dialplan_editor_version'] = null;
+	$database->save($reset_array);
+	unset($reset_array);
 
 	$cache = new cache;
 	$dialplan_context_to_clear = $row['dialplan_context'];
@@ -473,6 +611,22 @@ if ($action === 'update' && !empty($dialplan_uuid)) {
 		$dialplan_domain_uuid = $row['domain_uuid'] ?? $domain_uuid;
 	}
 	unset($sql, $parameters, $row);
+}
+
+// If dialplan_xml is empty (legacy dialplan storing data in v_dialplan_details), generate XML from details
+if ($action === 'update' && !empty($dialplan_uuid) && empty($dialplan_xml)) {
+	if (!class_exists('dialplan')) {
+		require_once dirname(__DIR__) . '/dialplans/resources/classes/dialplan.php';
+	}
+	$dialplan_obj = new dialplan(['database' => $database]);
+	$dialplan_obj->source = 'details';
+	$dialplan_obj->uuid = $dialplan_uuid;
+	$dialplan_obj->destination = 'array';
+	$xml_array = $dialplan_obj->xml();
+	if (!empty($xml_array[$dialplan_uuid])) {
+		$dialplan_xml = $xml_array[$dialplan_uuid];
+	}
+	unset($dialplan_obj, $xml_array);
 }
 
 // determine if this is a migration (legacy to unified)
