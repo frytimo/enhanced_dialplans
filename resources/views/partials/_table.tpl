@@ -6,6 +6,9 @@
 <input type='hidden' name='search' value="{$search|escape}">
 <input type='hidden' name='order_by' value="{$order_by|escape}">
 <input type='hidden' name='order' value="{$order|escape}">
+{if $show == 'all'}
+<input type='hidden' name='show' value='all'>
+{/if}
 
 <table class='list'>
 <tr class='list-header'>

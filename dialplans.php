@@ -488,7 +488,7 @@ if (!empty($preview_dialplan_uuid)) {
 }
 
 // process the http post data by action
-if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
+if (!empty($action) && (($action === 'reset_defaults') || (is_array($dialplans) && @sizeof($dialplans) != 0))) {
 	// process action
 	switch ($action) {
 		case 'copy':
@@ -722,6 +722,249 @@ if (!empty($action) && is_array($dialplans) && @sizeof($dialplans) != 0) {
 			if ($has_dialplan_delete) {
 				$obj = new enhanced_dialplans;
 				$obj->delete($dialplans);
+			}
+			break;
+		case 'reset_defaults':
+			if ($has_restore_action && $has_dialplan_delete) {
+				$token = new token;
+				if (!$token->validate($_SERVER['PHP_SELF'])) {
+					message::add($text['message-invalid_token'] ?? 'Invalid token', 'negative');
+					break;
+				}
+
+				$reset_all_domains = ($show === 'all' && $has_dialplan_all);
+				$dialplan_directory = dirname(__DIR__) . "/dialplans/resources/switch/conf/dialplan";
+				$file_map = dialplan_build_original_file_map($dialplan_directory);
+
+				if (empty($file_map)) {
+					message::add('No default dialplan XML files were found in the switch folder.', 'negative');
+					break;
+				}
+
+				$baseline_map = [];
+				foreach ($file_map as $file_key => $original_file) {
+					if (empty($original_file) || !is_file($original_file) || !is_readable($original_file)) {
+						continue;
+					}
+
+					$original_xml = file_get_contents($original_file);
+					if ($original_xml === false || $original_xml === '') {
+						continue;
+					}
+
+					$baseline = dialplan_parse_baseline_extension_attributes($original_xml);
+					if (!is_array($baseline) || empty($baseline['dialplan_name'])) {
+						continue;
+					}
+
+					$baseline_map[$file_key] = [
+						'baseline' => $baseline,
+						'xml' => $original_xml,
+					];
+				}
+
+				if (empty($baseline_map)) {
+					message::add('No parseable default dialplan XML files were found.', 'negative');
+					break;
+				}
+
+				$target_domains = [];
+				if ($reset_all_domains) {
+					$target_domains = $database->select("select domain_uuid, domain_name from v_domains order by domain_name asc", null, 'all');
+				}
+				else {
+					$target_domains[] = [
+						'domain_uuid' => $domain_uuid,
+						'domain_name' => $_SESSION['domain_name'] ?? '',
+					];
+				}
+
+				$sql = "select dialplan_uuid, domain_uuid, dialplan_context, dialplan_order, dialplan_name from v_dialplans ";
+				$parameters = [];
+				if (!$reset_all_domains) {
+					$sql .= "where domain_uuid = :domain_uuid ";
+					$parameters['domain_uuid'] = $domain_uuid;
+				}
+				$existing_rows = $database->select($sql, $parameters, 'all');
+				unset($sql, $parameters);
+
+				$delete_dialplan_uuids = [];
+				$reset_contexts = [];
+				if (!empty($existing_rows)) {
+					foreach ($existing_rows as $existing_row) {
+						$file_key = dialplan_build_original_file_key($existing_row['dialplan_order'] ?? null, $existing_row['dialplan_name'] ?? '');
+						if ($file_key === null || !isset($baseline_map[$file_key])) {
+							continue;
+						}
+
+						$baseline_is_global = !empty($baseline_map[$file_key]['baseline']['dialplan_global']);
+						$row_is_global = empty($existing_row['domain_uuid']);
+						if ($baseline_is_global !== $row_is_global) {
+							continue;
+						}
+
+						$dialplan_uuid = $existing_row['dialplan_uuid'] ?? null;
+						if (is_uuid($dialplan_uuid)) {
+							$delete_dialplan_uuids[$dialplan_uuid] = true;
+							$reset_contexts[] = $existing_row['dialplan_context'] ?? '';
+						}
+					}
+				}
+
+				$deleted_count = 0;
+				if (!empty($delete_dialplan_uuids)) {
+					foreach (array_keys($delete_dialplan_uuids) as $delete_dialplan_uuid) {
+						$database->execute(
+							"delete from v_dialplan_details where dialplan_uuid = :dialplan_uuid",
+							['dialplan_uuid' => $delete_dialplan_uuid]
+						);
+						$database->execute(
+							"delete from v_dialplans where dialplan_uuid = :dialplan_uuid",
+							['dialplan_uuid' => $delete_dialplan_uuid]
+						);
+						$deleted_count++;
+					}
+				}
+
+				$new_dialplan_rows = [];
+				$new_detail_rows = [];
+				$restored_count = 0;
+
+				foreach ($baseline_map as $baseline_entry) {
+					$baseline = $baseline_entry['baseline'];
+					$original_xml = $baseline_entry['xml'];
+					$baseline_is_global = !empty($baseline['dialplan_global']);
+
+					if ($baseline_is_global) {
+						if (!$reset_all_domains) {
+							continue;
+						}
+
+						$sql = "select count(*) from v_dialplans where dialplan_order = :dialplan_order and dialplan_name = :dialplan_name and domain_uuid is null";
+						$parameters = [
+							'dialplan_order' => $baseline['dialplan_order'],
+							'dialplan_name' => $baseline['dialplan_name'],
+						];
+						$already_exists = (int) $database->select($sql, $parameters, 'column');
+						unset($sql, $parameters);
+						if ($already_exists > 0) {
+							continue;
+						}
+
+						$new_dialplan_uuid = uuid();
+						$new_context = str_replace(["\${domain_name}", '{v_context}'], $_SESSION['domain_name'] ?? '', $baseline['dialplan_context']);
+						if ($new_context === '') {
+							$new_context = $baseline['dialplan_context'];
+						}
+
+						$new_dialplan_rows[] = [
+							'dialplan_uuid' => $new_dialplan_uuid,
+							'domain_uuid' => null,
+							'app_uuid' => $baseline['app_uuid'] ?? null,
+							'dialplan_context' => $new_context,
+							'dialplan_name' => $baseline['dialplan_name'],
+							'dialplan_number' => $baseline['dialplan_number'],
+							'dialplan_destination' => $baseline['dialplan_destination'],
+							'dialplan_continue' => $baseline['dialplan_continue'],
+							'dialplan_order' => $baseline['dialplan_order'],
+							'dialplan_enabled' => $baseline['dialplan_enabled'],
+							'dialplan_description' => $baseline['dialplan_description'],
+							'dialplan_xml' => $original_xml,
+							'dialplan_editor_version' => null,
+						];
+						$reset_contexts[] = $new_context;
+						$restored_count++;
+
+						$detail_rows = dialplan_build_details_from_xml($new_dialplan_uuid, null, $original_xml);
+						if (!empty($detail_rows)) {
+							$new_detail_rows = array_merge($new_detail_rows, $detail_rows);
+						}
+						continue;
+					}
+
+					foreach ($target_domains as $target_domain) {
+						$target_domain_uuid = $target_domain['domain_uuid'] ?? null;
+						$target_domain_name = $target_domain['domain_name'] ?? '';
+						if (!is_uuid($target_domain_uuid)) {
+							continue;
+						}
+
+						$sql = "select count(*) from v_dialplans where dialplan_order = :dialplan_order and dialplan_name = :dialplan_name and domain_uuid = :domain_uuid";
+						$parameters = [
+							'dialplan_order' => $baseline['dialplan_order'],
+							'dialplan_name' => $baseline['dialplan_name'],
+							'domain_uuid' => $target_domain_uuid,
+						];
+						$already_exists = (int) $database->select($sql, $parameters, 'column');
+						unset($sql, $parameters);
+						if ($already_exists > 0) {
+							continue;
+						}
+
+						$new_context = str_replace(["\${domain_name}", '{v_context}'], $target_domain_name, $baseline['dialplan_context']);
+						if ($new_context === '') {
+							$new_context = $target_domain_name;
+						}
+
+						$new_dialplan_uuid = uuid();
+						$new_dialplan_rows[] = [
+							'dialplan_uuid' => $new_dialplan_uuid,
+							'domain_uuid' => $target_domain_uuid,
+							'app_uuid' => $baseline['app_uuid'] ?? null,
+							'dialplan_context' => $new_context,
+							'dialplan_name' => $baseline['dialplan_name'],
+							'dialplan_number' => $baseline['dialplan_number'],
+							'dialplan_destination' => $baseline['dialplan_destination'],
+							'dialplan_continue' => $baseline['dialplan_continue'],
+							'dialplan_order' => $baseline['dialplan_order'],
+							'dialplan_enabled' => $baseline['dialplan_enabled'],
+							'dialplan_description' => $baseline['dialplan_description'],
+							'dialplan_xml' => $original_xml,
+							'dialplan_editor_version' => null,
+						];
+						$reset_contexts[] = $new_context;
+						$restored_count++;
+
+						$detail_rows = dialplan_build_details_from_xml($new_dialplan_uuid, $target_domain_uuid, $original_xml);
+						if (!empty($detail_rows)) {
+							$new_detail_rows = array_merge($new_detail_rows, $detail_rows);
+						}
+					}
+				}
+
+				if (!empty($new_dialplan_rows)) {
+					$save_array = ['dialplans' => $new_dialplan_rows];
+					$database->save($save_array);
+					unset($save_array);
+				}
+
+				if (!empty($new_detail_rows)) {
+					$p = permissions::new();
+					$p->add('dialplan_detail_add', 'temp');
+					$p->add('dialplan_detail_edit', 'temp');
+					$save_array = ['dialplan_details' => $new_detail_rows];
+					$database->save($save_array);
+					unset($save_array);
+					$p->delete('dialplan_detail_add', 'temp');
+					$p->delete('dialplan_detail_edit', 'temp');
+				}
+
+				if (!empty($reset_contexts)) {
+					$cache = new cache;
+					foreach (array_unique($reset_contexts) as $reset_context) {
+						if ($reset_context == "\${domain_name}" || $reset_context == "global") {
+							$reset_context = "*";
+						}
+						$cache->delete("dialplan:" . $reset_context);
+					}
+				}
+
+				if (isset($_SESSION['destinations']['array'])) {
+					unset($_SESSION['destinations']['array']);
+				}
+
+				$scope_label = $reset_all_domains ? 'all domains' : 'current domain';
+				message::add('Reset completed for ' . $scope_label . '. Deleted ' . $deleted_count . ' baseline dialplan ' . ($deleted_count == 1 ? 'entry' : 'entries') . ' and restored ' . $restored_count . ' default ' . ($restored_count == 1 ? 'entry' : 'entries') . '.');
 			}
 			break;
 	}
@@ -1312,6 +1555,20 @@ if (!empty($dialplans) && $has_show_toggle) {
 		'onclick' => "list_action_set('restore_original'); list_form_submit('form_list');",
 	]);
 }
+
+$can_show_reset_defaults = ($has_restore_action && $has_dialplan_delete && !$all_original_status_match);
+$btn_reset = '';
+if ($can_show_reset_defaults) {
+	$btn_reset = button::create([
+		'type' => 'button',
+		'label' => 'RESET',
+		'icon' => ($button_icon_reset !== '' ? $button_icon_reset : 'undo'),
+		'id' => 'btn_reset',
+		'name' => 'btn_reset',
+		'class' => '+revealed',
+		'onclick' => "modal_open('modal-reset','btn_reset');",
+	]);
+}
 $btn_xml = '';
 if ($has_dialplan_xml) {
 	$xml_link = PROJECT_PATH . '/app/enhanced_dialplans/dialplan_xml.php';
@@ -1362,6 +1619,27 @@ if (!empty($dialplans) && $has_show_toggle) {
 $modal_delete = '';
 if (!empty($dialplans) && $has_show_delete) {
 	$modal_delete = modal::create(['id' => 'modal-delete', 'type' => 'delete', 'actions' => button::create(['type' => 'button', 'label' => $text['button-continue'], 'icon' => 'check', 'id' => 'btn_delete', 'style' => 'float: right; margin-left: 15px;', 'collapse' => 'never', 'onclick' => "modal_close(); list_action_set('delete'); list_form_submit('form_list');"])]);
+}
+$modal_reset = '';
+if ($can_show_reset_defaults) {
+	$scope_note = ($show == 'all' && $has_dialplan_all)
+		? 'This will reset default dialplans for all domains.'
+		: 'This will reset default dialplans for the current domain.';
+	$modal_reset = modal::create([
+		'id' => 'modal-reset',
+		'type' => 'general',
+		'title' => 'Confirm Reset',
+		'message' => $scope_note . ' Custom dialplans that do not have a switch-folder baseline (status --) will not be deleted.',
+		'actions' => button::create([
+			'type' => 'button',
+			'label' => $text['button-continue'],
+			'icon' => 'check',
+			'id' => 'btn_reset_confirm',
+			'style' => 'float: right; margin-left: 15px;',
+			'collapse' => 'never',
+			'onclick' => "modal_close(); list_action_set('reset_defaults'); list_form_submit('form_list');",
+		]),
+	]);
 }
 
 // build the context selector
@@ -1566,12 +1844,14 @@ $template->assign('btn_copy', $btn_copy);
 $template->assign('btn_toggle', $btn_toggle);
 $template->assign('btn_delete', $btn_delete);
 $template->assign('btn_restore', $btn_restore);
+$template->assign('btn_reset', $btn_reset);
 $template->assign('btn_xml', $btn_xml);
 $template->assign('btn_show_all', $btn_show_all);
 $template->assign('btn_search', $btn_search);
 $template->assign('modal_copy', $modal_copy);
 $template->assign('modal_toggle', $modal_toggle);
 $template->assign('modal_delete', $modal_delete);
+$template->assign('modal_reset', $modal_reset);
 $template->assign('context_selector', $context_selector);
 $template->assign('th_domain_name', $th_domain_name);
 $template->assign('th_name', $th_name);

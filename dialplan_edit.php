@@ -165,6 +165,41 @@ function dialplan_find_original_file_path($base_directory, $dialplan_order, $dia
 	return $paths[0];
 }
 
+function dialplan_xml_matches_original($original_xml, $current_xml): bool {
+	$normalize = static function($xml): string {
+		$xml = (string) $xml;
+		$xml = trim($xml);
+		if ($xml === '') {
+			return '';
+		}
+		$xml = preg_replace('/>\s+</', '><', $xml);
+		$xml = preg_replace('/\s+/', ' ', $xml);
+		return trim((string) $xml);
+	};
+
+	$original = $normalize($original_xml);
+	$current = $normalize($current_xml);
+
+	if ($original === '' || $current === '') {
+		return false;
+	}
+
+	if ($original === $current) {
+		return true;
+	}
+
+	// Allow baseline tokens ({v_*}) to match generated values.
+	if (strpos($original, '{v_') !== false) {
+		$pattern = preg_quote($original, '/');
+		$pattern = preg_replace('/\\\{v_[a-zA-Z0-9_]+\\\}/', '[^"<>]*', (string) $pattern);
+		if (@preg_match('/\A' . $pattern . '\z/', $current) === 1) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 function ajax_save_response($success, $message, $extra = [], $http_status = 200) {
 	http_response_code($http_status);
 	header('Content-Type: application/json');
@@ -634,6 +669,22 @@ if ($action === 'update' && !empty($dialplan_uuid) && empty($dialplan_xml)) {
 		$dialplan_xml = $xml_array[$dialplan_uuid];
 	}
 	unset($dialplan_obj, $xml_array);
+}
+
+$can_restore_original = false;
+$has_original_baseline = false;
+$original_xml_for_compare = '';
+if ($action === 'update' && !empty($dialplan_uuid) && $dialplan_order !== '' && $dialplan_name !== '') {
+	$original_directory = dirname(__DIR__) . '/dialplans/resources/switch/conf/dialplan';
+	$original_file = dialplan_find_original_file_path($original_directory, $dialplan_order, $dialplan_name);
+	if (!empty($original_file) && is_file($original_file) && is_readable($original_file)) {
+		$original_xml = file_get_contents($original_file);
+		if ($original_xml !== false) {
+			$has_original_baseline = true;
+			$original_xml_for_compare = (string) $original_xml;
+			$can_restore_original = !dialplan_xml_matches_original($original_xml_for_compare, $dialplan_xml);
+		}
+	}
 }
 
 // determine if this is a migration (legacy to unified)
@@ -2176,8 +2227,9 @@ body.drag-active .drop-zone {
 	<div class="actions">
 		<?php
 		echo button::create(['type' => 'button', 'label' => $text['button-back'], 'icon' => $settings->get('theme', 'button_icon_back'), 'id' => 'btn_back', 'link' => $url->set_path('/app/enhanced_dialplans/dialplans.php')->unset_query_param('id')->build_absolute()]);
-		if ($action === 'update') {
-			echo button::create(['type' => 'submit', 'label' => $text['button-restore'] ?? 'Restore', 'icon' => ($settings->get('theme', 'button_icon_reset') ?: 'undo'), 'id' => 'btn_restore', 'name' => 'submit', 'value' => 'restore_original', 'style' => 'margin-left: 15px;']);
+		if ($action === 'update' && $has_original_baseline) {
+			$restore_style = 'margin-left: 15px;' . ($can_restore_original ? '' : ' display: none;');
+			echo button::create(['type' => 'submit', 'label' => $text['button-restore'] ?? 'Restore', 'icon' => ($settings->get('theme', 'button_icon_reset') ?: 'undo'), 'id' => 'btn_restore', 'name' => 'submit', 'value' => 'restore_original', 'style' => $restore_style]);
 		}
 		?>
 
@@ -2510,12 +2562,14 @@ body.drag-active .drop-zone {
 ]); ?>
 
 <!-- Restore Confirmation Modal -->
+<?php if ($has_original_baseline): ?>
 <?php echo modal::create([
 	'id' => 'modal-restore-original',
 	'type' => 'general',
 	'message' => ($text['message-restore_confirm'] ?? 'Restore the original XML for this dialplan? This will overwrite current XML changes.'),
 	'actions' => button::create(['type' => 'button', 'label' => $text['button-continue'], 'icon' => 'check', 'style' => 'float: right; margin-left: 15px;', 'onclick' => 'confirmRestoreOriginal();'])
 ]); ?>
+<?php endif; ?>
 
 <?php
 $dialplan_parser_version = md5_file(__DIR__ . '/resources/javascript/dialplan_parser.js');
@@ -2576,6 +2630,8 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 	// State management
 	let syncState = 'synced'; // 'synced', 'stale', 'error'
 	let isDirty = false;
+	const hasOriginalBaselineXml = <?php echo $has_original_baseline ? 'true' : 'false'; ?>;
+	const originalBaselineXml = <?php echo json_encode($original_xml_for_compare); ?>;
 	let savedXml = null;   // XML string snapshotted at last save / page-load
 	let savedMeta = null;  // Metadata field values snapshotted at last save / page-load
 	let tree = null;
@@ -3235,6 +3291,47 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 	}
 
+	function normalizeXmlForRestoreCompare(xml) {
+		xml = (xml || '').toString().trim();
+		if (!xml) return '';
+		xml = xml.replace(/>\s+</g, '><');
+		xml = xml.replace(/\s+/g, ' ');
+		return xml.trim();
+	}
+
+	function isCurrentXmlMatchingOriginal(currentXml) {
+		const original = normalizeXmlForRestoreCompare(originalBaselineXml);
+		const current = normalizeXmlForRestoreCompare(currentXml);
+		if (!original || !current) return false;
+		if (original === current) return true;
+
+		if (original.indexOf('{v_') !== -1) {
+			const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const pattern = escaped.replace(/\\\{v_[a-zA-Z0-9_]+\\\}/g, '[^"<>]*');
+			try {
+				return new RegExp('^' + pattern + '$').test(current);
+			} catch (_) {
+				return false;
+			}
+		}
+
+		return false;
+	}
+
+	function updateRestoreButtonVisibility() {
+		const restoreBtn = document.getElementById('btn_restore');
+		if (!restoreBtn) return;
+		if (!hasOriginalBaselineXml) {
+			restoreBtn.style.display = 'none';
+			return;
+		}
+
+		const currentXml = editor ? editor.getValue() : '';
+		const matchesOriginal = isCurrentXmlMatchingOriginal(currentXml);
+		const shouldShow = isDirty || !matchesOriginal;
+		restoreBtn.style.display = shouldShow ? '' : 'none';
+	}
+
 	// Set sync state — manages the visual↔XML overlay only; dirty badge is handled by setDirtyState
 	function setSyncState(state, errorMessage) {
 		syncState = state;
@@ -3288,6 +3385,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 		isDirty = dirty;
 		setDirtyState(isDirty);
+		updateRestoreButtonVisibility();
 		if (xmlChannel) {
 			xmlChannel.postMessage({ type: 'dirty-state', dirty: isDirty });
 		}
