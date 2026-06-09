@@ -1168,6 +1168,8 @@ if (!is_uuid($app_uuid)) {
 }
 $sql .= ") as dc ";
 $rows = $database->select($sql, $parameters ?? null, 'all');
+$dialplan_contexts = [];
+$array = [];
 if (is_array($rows) && @sizeof($rows) != 0) {
 	foreach ($rows as $row) {
 		// reverse the array's (string) values in preparation to sort
