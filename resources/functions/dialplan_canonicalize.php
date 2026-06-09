@@ -268,12 +268,42 @@ if (!function_exists('dialplan_normalize_name')) {
 		$file_map = [];
 		$paths = glob($dialplan_directory . '/*.xml') ?: [];
 		foreach ($paths as $path) {
-			$filename = basename($path);
-			if (preg_match('/^(\d{1,3})_([^.]+)\.xml$/', $filename, $matches)) {
-				$key = dialplan_build_original_file_key($matches[1], $matches[2]);
-				if ($key !== null) {
-					$file_map[$key] = $path;
+			$key = null;
+
+			// Prefer the XML <extension> attributes over filename prefixes.
+			// Some shipped files can have a stale numeric prefix that doesn't
+			// match extension@order (e.g. 474_*.xml with order="470").
+			$xml = @file_get_contents($path);
+			if ($xml !== false && $xml !== '') {
+				$wrapped = '<?xml version="1.0" encoding="UTF-8"?><_root>' . $xml . '</_root>';
+				$prev_errors = libxml_use_internal_errors(true);
+				$doc = new DOMDocument();
+				$loaded = $doc->loadXML($wrapped, LIBXML_NOBLANKS | LIBXML_NONET);
+				libxml_clear_errors();
+				libxml_use_internal_errors($prev_errors);
+
+				if ($loaded) {
+					$extension = $doc->getElementsByTagName('extension')->item(0);
+					if ($extension instanceof DOMElement) {
+						$name = (string) $extension->getAttribute('name');
+						$order = (string) $extension->getAttribute('order');
+						if ($name !== '') {
+							$key = dialplan_build_original_file_key((int) $order, $name);
+						}
+					}
 				}
+			}
+
+			// Fallback for malformed XML or unexpected content.
+			if ($key === null) {
+				$filename = basename($path);
+				if (preg_match('/^(\d{1,4})_([^.]+)\.xml$/', $filename, $matches)) {
+					$key = dialplan_build_original_file_key($matches[1], $matches[2]);
+				}
+			}
+
+			if ($key !== null && !isset($file_map[$key])) {
+				$file_map[$key] = $path;
 			}
 		}
 		return $file_map;
