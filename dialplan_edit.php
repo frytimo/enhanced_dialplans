@@ -1343,7 +1343,7 @@ body.drag-active .drop-zone {
 	bottom: 0;
 	background: rgba(128, 128, 128, 0.5);
 	z-index: 100;
-	display: flex;
+	display: none;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
@@ -2010,7 +2010,6 @@ body.drag-active .drop-zone {
 	position: absolute;
 	left: 50%;
 	transform: translateX(-50%);
-	margin-right: 0;
 	max-width: 45%;
 	overflow: hidden;
 	white-space: nowrap;
@@ -2029,6 +2028,17 @@ body.drag-active .drop-zone {
 	color: white;
 	border-radius: 3px;
 	text-transform: capitalize;
+}
+
+.property-tag.disabled {
+	background: #dc3545;
+	color: white;
+	letter-spacing: 0.5px;
+}
+
+.property-tag.destination {
+	background: #2196F3;
+	color: white;
 }
 
 .property-tag:first-of-type {
@@ -2268,11 +2278,14 @@ body.drag-active .drop-zone {
 	<div class="properties-header collapsed" onclick="togglePropertiesPanel();" id="properties-header">
 		<h3><i class="fas fa-cog"></i> <span id="properties-header-title"><?php echo escape($dialplan_name); ?></span></h3>
 		<div class="properties-tags" id="properties-tags">
+			<?php if ($dialplan_enabled === 'false'): ?>
+			<span class="property-tag disabled"><?php echo $text['label-disabled'] ?? 'Disabled'; ?></span>
+			<?php endif; ?>
 			<?php if ($dialplan_continue === 'true'): ?>
 			<span class="property-tag">continue</span>
 			<?php endif; ?>
 			<?php if ($dialplan_destination === 'true'): ?>
-			<span class="property-tag">destination</span>
+			<span class="property-tag destination">destination</span>
 			<?php endif; ?>
 		</div>
 		<i class="fas fa-chevron-down toggle-icon" id="properties-toggle-icon"></i>
@@ -2685,6 +2698,9 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		}
 		if (overlay) {
 			overlay.classList.toggle('hidden', value === 'true');
+		}
+		if (typeof updatePropertyTags === 'function') {
+			updatePropertyTags();
 		}
 	}
 
@@ -3156,6 +3172,15 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		// Clear existing tags
 		tagsContainer.innerHTML = '';
 		
+		// Add disabled tag if the dialplan is disabled
+		const enabledValue = document.getElementById('dialplan_enabled');
+		if (enabledValue && enabledValue.value === 'false') {
+			const tag = document.createElement('span');
+			tag.className = 'property-tag disabled';
+			tag.textContent = '<?php echo $text['label-disabled'] ?? 'Disabled'; ?>';
+			tagsContainer.appendChild(tag);
+		}
+		
 		// Add continue tag if enabled
 		const continueValue = document.getElementById('dialplan_continue');
 		if (continueValue && continueValue.value === 'true') {
@@ -3169,7 +3194,7 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const destinationValue = document.getElementById('dialplan_destination');
 		if (destinationValue && destinationValue.value === 'true') {
 			const tag = document.createElement('span');
-			tag.className = 'property-tag';
+			tag.className = 'property-tag destination';
 			tag.textContent = 'destination';
 			tagsContainer.appendChild(tag);
 		}
