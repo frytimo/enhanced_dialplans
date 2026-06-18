@@ -4785,8 +4785,12 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const height = rect.height;
 
 		// Only conditions (including regex conditions) can accept children via drop
-		// Regex child elements (type='regex') are NOT containers
-		const isDropContainer = nodeEl._nodeData && nodeEl._nodeData.type === 'condition';
+		// Regex child elements (type='regex') are NOT containers, UNLESS a plain condition
+		// is being dragged onto them (condition → regex merge).
+		const isDraggedPlainCondition = draggedNodeData && draggedNodeData.type === 'condition' &&
+			!draggedNodeData.isRegexCondition && !(draggedNodeData.attributes && draggedNodeData.attributes.regex);
+		const isDropContainer = (nodeEl._nodeData && nodeEl._nodeData.type === 'condition') ||
+			(isDraggedPlainCondition && nodeEl._nodeData && nodeEl._nodeData.type === 'regex');
 		const topZone = findAdjacentInsertionZone(nodeEl, 'before');
 		const bottomZone = findAdjacentInsertionZone(nodeEl, 'after');
 
@@ -4844,8 +4848,12 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const height = rect.height;
 
 		// Only conditions (including regex conditions) can accept children
-		// Regex child elements (type='regex') are NOT containers
-		const isDropContainer = targetNodeData.type === 'condition';
+		// Regex child elements (type='regex') are NOT containers, UNLESS a plain condition
+		// is being dragged onto them (condition → regex merge).
+		const isDraggedPlainCondition = draggedNodeData && draggedNodeData.type === 'condition' &&
+			!draggedNodeData.isRegexCondition && !(draggedNodeData.attributes && draggedNodeData.attributes.regex);
+		const isDropContainer = targetNodeData.type === 'condition' ||
+			(isDraggedPlainCondition && targetNodeData.type === 'regex');
 
 		// Remove from original position
 		const removedNode = draggedParentArray.splice(draggedIndex, 1)[0];
@@ -4862,12 +4870,26 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			targetParentArray.splice(newIndex, 0, convertRegexNodeForParent(removedNode, targetParentNode));
 			placed = true;
 		} else {
-			// Insert inside a condition.
-			// Special case: dropping a <regex> field onto a regular (non-regex) condition —
+			// Insert inside a condition (or onto a regex node in the condition→regex merge case).
+			// Special case A: dropping a <regex> field onto a regular (non-regex) condition —
 			// merge the regex's field/expression into the condition rather than nesting it as a child.
 			if (removedNode.type === 'regex' && !isRegexContainer(targetNodeData)) {
 				targetNodeData.attributes.field = (removedNode.attributes && removedNode.attributes.field) || '';
 				targetNodeData.attributes.expression = (removedNode.attributes && removedNode.attributes.expression) || '';
+			} else if (removedNode.type === 'condition' && !removedNode.isRegexCondition &&
+					!(removedNode.attributes && removedNode.attributes.regex) &&
+					targetNodeData.type === 'regex') {
+				// Special case B (mirror of A): dropping a plain condition onto a <regex> field —
+				// transfer the condition's field/expression into the regex node, then append
+				// any action/anti-action children to the parent regex-condition's child list.
+				targetNodeData.attributes.field = (removedNode.attributes && removedNode.attributes.field) || '';
+				targetNodeData.attributes.expression = (removedNode.attributes && removedNode.attributes.expression) || '';
+				if (Array.isArray(removedNode.children) && removedNode.children.length > 0) {
+					if (!targetParentNode.children) targetParentNode.children = [];
+					removedNode.children.forEach(function(child) {
+						targetParentNode.children.push(child);
+					});
+				}
 			} else {
 				// Regular behavior: nest as a child node.
 				if (!targetNodeData.children) targetNodeData.children = [];
