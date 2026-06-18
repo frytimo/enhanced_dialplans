@@ -4859,8 +4859,45 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 		const removedNode = draggedParentArray.splice(draggedIndex, 1)[0];
 		const wasRegexNode = removedNode.type === 'regex';
 
+		// Special case B: dropping a plain condition into a regex-condition — convert it into a
+		// regex field and append its actions to the bottom. This applies when the drop lands on:
+		//   • the regex-condition node itself (middle zone), or
+		//   • any child row (regex/action) that lives inside a regex-condition.
+		// Dropping on the top/bottom edge of the regex-condition node itself still makes a sibling.
+		let regexMergeTarget = null;
+		if (isDraggedPlainCondition) {
+			if (isRegexContainer(targetNodeData) && y >= height * 0.25 && y <= height * 0.75) {
+				regexMergeTarget = targetNodeData;
+			} else if (isRegexContainer(targetParentNode)) {
+				regexMergeTarget = targetParentNode;
+			}
+		}
+
 		let placed = false;
-		if (y < height * 0.25) {
+		if (regexMergeTarget) {
+			// Add a new regex node from the condition's field/expression (after the last regex
+			// child) and append the condition's action children to the bottom of the list.
+			const conditionChildren = Array.isArray(removedNode.children) ? removedNode.children.slice() : [];
+			const newRegexNode = {
+				type: 'regex',
+				attributes: {
+					field: (removedNode.attributes && removedNode.attributes.field) || '',
+					expression: (removedNode.attributes && removedNode.attributes.expression) || ''
+				},
+				enabled: removedNode.enabled !== false
+			};
+			if (!regexMergeTarget.children) regexMergeTarget.children = [];
+			const rcList = regexMergeTarget.children;
+			let lastRegexIndex = -1;
+			for (let i = 0; i < rcList.length; i++) {
+				if (rcList[i].type === 'regex') lastRegexIndex = i;
+			}
+			rcList.splice(lastRegexIndex + 1, 0, newRegexNode);
+			conditionChildren.forEach(function(child) {
+				rcList.push(child);
+			});
+			placed = true;
+		} else if (y < height * 0.25) {
 			// Insert above target. Regex rows dropped into non-regex containers become conditions.
 			targetParentArray.splice(targetIndex, 0, convertRegexNodeForParent(removedNode, targetParentNode));
 			placed = true;
@@ -4870,26 +4907,12 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 			targetParentArray.splice(newIndex, 0, convertRegexNodeForParent(removedNode, targetParentNode));
 			placed = true;
 		} else {
-			// Insert inside a condition (or onto a regex node in the condition→regex merge case).
+			// Insert inside a condition.
 			// Special case A: dropping a <regex> field onto a regular (non-regex) condition —
 			// merge the regex's field/expression into the condition rather than nesting it as a child.
 			if (removedNode.type === 'regex' && !isRegexContainer(targetNodeData)) {
 				targetNodeData.attributes.field = (removedNode.attributes && removedNode.attributes.field) || '';
 				targetNodeData.attributes.expression = (removedNode.attributes && removedNode.attributes.expression) || '';
-			} else if (removedNode.type === 'condition' && !removedNode.isRegexCondition &&
-					!(removedNode.attributes && removedNode.attributes.regex) &&
-					targetNodeData.type === 'regex') {
-				// Special case B (mirror of A): dropping a plain condition onto a <regex> field —
-				// transfer the condition's field/expression into the regex node, then append
-				// any action/anti-action children to the parent regex-condition's child list.
-				targetNodeData.attributes.field = (removedNode.attributes && removedNode.attributes.field) || '';
-				targetNodeData.attributes.expression = (removedNode.attributes && removedNode.attributes.expression) || '';
-				if (Array.isArray(removedNode.children) && removedNode.children.length > 0) {
-					if (!targetParentNode.children) targetParentNode.children = [];
-					removedNode.children.forEach(function(child) {
-						targetParentNode.children.push(child);
-					});
-				}
 			} else {
 				// Regular behavior: nest as a child node.
 				if (!targetNodeData.children) targetNodeData.children = [];
@@ -4979,7 +5002,35 @@ $dialplan_lint_rules_version = md5($dialplan_lint_rules_hash_input);
 
 		// Add to new parent
 		if (!targetParentNode.children) targetParentNode.children = [];
-		targetParentNode.children.push(convertRegexNodeForParent(removedNode, targetParentNode));
+
+		// Special case B: dropping a plain condition onto a regex-condition's body —
+		// add a new regex field from the condition's field/expression and append its
+		// action children to the bottom of the parent regex-condition, same as when
+		// dropping directly onto an existing regex node.
+		if (removedNode.type === 'condition' && !removedNode.isRegexCondition &&
+				!(removedNode.attributes && removedNode.attributes.regex) &&
+				isRegexContainer(targetParentNode)) {
+			const conditionChildren = Array.isArray(removedNode.children) ? removedNode.children.slice() : [];
+			// Find the last regex child to insert the new one after it (before actions)
+			let lastRegexIndex = -1;
+			for (let i = 0; i < targetParentNode.children.length; i++) {
+				if (targetParentNode.children[i].type === 'regex') lastRegexIndex = i;
+			}
+			const newRegexNode = {
+				type: 'regex',
+				attributes: {
+					field: (removedNode.attributes && removedNode.attributes.field) || '',
+					expression: (removedNode.attributes && removedNode.attributes.expression) || ''
+				},
+				enabled: removedNode.enabled !== false
+			};
+			targetParentNode.children.splice(lastRegexIndex + 1, 0, newRegexNode);
+			conditionChildren.forEach(function(child) {
+				targetParentNode.children.push(child);
+			});
+		} else {
+			targetParentNode.children.push(convertRegexNodeForParent(removedNode, targetParentNode));
+		}
 
 		// If a regex node was the last one in its old regex condition, keep that
 		// parent intact by restoring a blank regex child.
