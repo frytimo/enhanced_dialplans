@@ -1200,7 +1200,12 @@ if (!empty($dialplans)) {
 		// Fast path: DB-cached baseline hash compared to current row's canonical hash.
 		$baseline_hash = $row['dialplan_hash'] ?? null;
 		$current_hash  = dialplan_canonical_hash($row['dialplan_xml'] ?? '');
-		if (!empty($baseline_hash) && $current_hash !== null) {
+		$baseline_hash_is_copy_marker = (is_string($baseline_hash) && strpos($baseline_hash, 'copied:') === 0);
+		if ($baseline_hash_is_copy_marker) {
+			$dialplans[$x]['original_xml_status'] = 'missing';
+			continue;
+		}
+		else if (!empty($baseline_hash) && $current_hash !== null) {
 			if ($baseline_hash === $current_hash) {
 				$dialplans[$x]['original_xml_status'] = 'match';
 			} else {
@@ -1212,8 +1217,10 @@ if (!empty($dialplans)) {
 
 		// Slow path: no cached baseline hash OR fast path reported diff and the
 		// baseline may contain template tokens. Read and compare the file.
-		$needs_slow_path = empty($baseline_hash)
-			|| ($dialplans[$x]['original_xml_status'] === 'diff');
+		$needs_slow_path = !$baseline_hash_is_copy_marker && (
+			empty($baseline_hash)
+			|| ($dialplans[$x]['original_xml_status'] === 'diff')
+		);
 		if ($needs_slow_path && !empty($original_file) && is_file($original_file) && is_readable($original_file)) {
 			if (!isset($original_xml_cache[$original_file])) {
 				$original_xml_cache[$original_file] = file_get_contents($original_file);

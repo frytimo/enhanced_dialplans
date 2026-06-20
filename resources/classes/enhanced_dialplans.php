@@ -1464,6 +1464,8 @@ class enhanced_dialplans implements clear_cache {
 			//overwrite
 			$array[self::TABLE][$x][self::UUID_PREFIX . 'uuid'] = $primary_uuid;
 			$array[self::TABLE][$x]['dialplan_description']      = trim($row['dialplan_description'] . ' (' . $text['label-copy'] . ')');
+			// Mark copied rows so baseline-compare UI never treats them as shipped originals.
+			$array[self::TABLE][$x]['dialplan_hash']             = 'copied:' . $primary_uuid;
 
 			//details sub table
 			$sql_2                         = "select * from v_dialplan_details where dialplan_uuid = :dialplan_uuid";
